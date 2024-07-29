@@ -1,0 +1,7 @@
+[project]
+name = "embryoharmonics"
+version = "0.1.0"
+
+[tool.jupytext.formats]
+"notebooks/" = "ipynb"
+"scripts/" = "py:percent"
