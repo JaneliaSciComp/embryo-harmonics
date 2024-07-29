@@ -11,6 +11,14 @@ class EmbryoModel:
         self.central_spline = CubicSpline(spline_domain, central_coordinates)
         self.transverse_splines = [CubicSpline(spline_domain, coordinates) for coordinates in transverse_coordinates]
 
+    @property
+    def n_seam_cells(self):
+        return len(self.seam_cells)
+
+    @property
+    def n_transverse_splines(self):
+        return len(self.transverse_splines)
+
 
 def load_measurement(h5file) -> tuple[np.ndarray, np.ndarray]:
     length = h5file["measurements/length"][:]
