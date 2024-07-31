@@ -18,9 +18,9 @@ embryo_model = load_avg_models(h5file, time_steps=[time_step])[time_step]
 # %%
 N = embryo_model.n_transverse_splines
 spline_surfaces = [get_spline_surface(embryo_model, i) for i in range(N)]
-spline_surfaces[0].col = (0, 0, 1)
-for surf in spline_surfaces[1::2]:
-    surf.col = (1, 0, 0)
+colors = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]  # [R, G, B]
+for i, surf in enumerate(spline_surfaces):
+    surf.col = colors[i % 3]
 total_surface = occ.Compound(spline_surfaces)
 geo = occ.OCCGeometry(total_surface)
 mesh = geo.GenerateMesh(maxh=4)

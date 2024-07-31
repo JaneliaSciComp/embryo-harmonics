@@ -73,7 +73,7 @@ def _project_to_plane_through_z_axis(x, normal):
     dist_to_plane = np.dot(x, normal)
     projection = x - np.outer(dist_to_plane, normal)
     local_y = np.array([0, 0, 1])
-    local_x = np.cross(normal, local_y)
+    local_x = -np.cross(normal, local_y)
     x_projected = np.dot(projection, local_x)
     y_projected = np.dot(projection, local_y)
     z_projected = dist_to_plane
@@ -109,5 +109,5 @@ def get_spline_surface(embryo_model, i):
     surf = occ.SplineSurfaceInterpolation(points)
     surf = surf.Rotate(occ.Axis((0, 0, 0), occ.X), 90)
     angle = np.arctan2(normal[1], normal[0]) / math.pi * 180
-    surf = surf.Rotate(occ.Axis((0, 0, 0), occ.Z), -angle)
+    surf = surf.Rotate(occ.Axis((0, 0, 0), occ.Z), angle)
     return surf
