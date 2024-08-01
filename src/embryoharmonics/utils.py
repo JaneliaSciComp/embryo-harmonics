@@ -62,52 +62,53 @@ def load_avg_models(h5file, *, time_steps=None) -> Dict[int, EmbryoModel]:
     return models
 
 
-def _project_to_plane_through_z_axis(x, normal):
+def _rotate_around_z_and_x(points, angle):
     """
-    Project x to a local coordinate system on a plane through the z-axis. The normal vector of the plane is assumed to
-    be orthogonal to the z-axis.
-    :param x: The points to be projected
-    :param normal: The normal vector of the plane (the vector must be orthogonal to the z-axis)
-    :return: Local x, y, and z coordinates of the projected points
+    Rotate a set of points (specifying a spline surface) first around the z-axis by a given angle and then around the
+    x-axis by -90 degrees.
+    :param points: The points to be rotated
+    :param angle: The angle by which to rotate in the xy-plane in deg
+    :return: Coordinates of the rotated points
     """
-    dist_to_plane = np.dot(x, normal)
-    projection = x - np.outer(dist_to_plane, normal)
-    local_y = np.array([0, 0, 1])
-    local_x = -np.cross(normal, local_y)
-    x_projected = np.dot(projection, local_x)
-    y_projected = np.dot(projection, local_y)
-    z_projected = dist_to_plane
-    return x_projected, y_projected, z_projected
+    # rotate in xy-plane
+    angle = angle / 180 * math.pi
+    s = np.sin(angle)
+    c = np.cos(angle)
+    rotation_matrix = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+    points = np.dot(points, rotation_matrix.T)
+    # manually apply rotation matrix around x-axis
+    return np.column_stack((points[:, 0], points[:, 2], -points[:, 1]))
 
 
-def get_spline_surface(embryo_model, i):
+def get_spline_surface(embryo_model, n, i):
     """
     Create an NGSolve-OCC surface from two neighboring splines of the embryo geometry.
     The resulting surface is the one between the i-th transverse spline and its clockwise neighbor.
     :param embryo_model: The embryo model containing the splines
+    :param n: The number of points to use for the interpolation
     :param i: The index of the transverse spline
     :return: An NGSolve-OCC surface
     """
     domain = embryo_model.spline_domain
-    n = 100
     t = np.linspace(domain[0], domain[-1], n)
 
     spline1 = embryo_model.transverse_splines[i]
-    neighbor_index = (i + 1) % embryo_model.n_transverse_splines
-    spline2 = embryo_model.transverse_splines[neighbor_index]
+    neighbor = (i + 1) % embryo_model.n_transverse_splines
+    spline2 = embryo_model.transverse_splines[neighbor]
     x1 = spline1(t)
     x2 = spline2(t)
     direction = (x1[0] + x2[0]) / 2
     normal = direction / np.linalg.norm(direction)
 
-    xp1, yp1, zp1 = _project_to_plane_through_z_axis(x1, normal)
-    xp2, yp2, zp2 = _project_to_plane_through_z_axis(x2, normal)
+    # Rotate so that the domain of the spline is [-a, a] x [0, b] x {0} and the z values represent its height
+    midpoint_angle = (2 * i + 1) / (2 * embryo_model.n_transverse_splines) * 180
+    angle = - (midpoint_angle + 90)
+    xr1 = _rotate_around_z_and_x(x1, angle)
+    xr2 = _rotate_around_z_and_x(x2, angle)
 
-    points = np.array([[(xp1[i], yp1[i], zp1[i]) for i in range(n)],
-                       [(xp2[i], yp2[i], zp2[i]) for i in range(n)]])
-
+    # Generate the surface and rotate it back to the original orientation
+    points = np.array([[tuple(xr1[i]) for i in range(n)], [tuple(xr2[i]) for i in range(n)]])
     surf = occ.SplineSurfaceInterpolation(points)
     surf = surf.Rotate(occ.Axis((0, 0, 0), occ.X), 90)
-    angle = np.arctan2(normal[1], normal[0]) / math.pi * 180
-    surf = surf.Rotate(occ.Axis((0, 0, 0), occ.Z), angle)
+    surf = surf.Rotate(occ.Axis((0, 0, 0), occ.Z), -angle)
     return surf
