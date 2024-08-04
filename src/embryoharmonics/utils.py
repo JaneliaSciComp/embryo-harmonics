@@ -2,8 +2,11 @@ import math
 from typing import Dict
 
 import numpy as np
-from netgen import occ
 from scipy.interpolate import CubicSpline
+from netgen import occ
+from ngsolve import Mesh
+from netgen.meshing import FaceDescriptor, Element2D
+from netgen.meshing import Mesh as NetgenMesh
 
 
 class EmbryoModel:
@@ -112,3 +115,26 @@ def get_spline_surface(embryo_model, n, i):
     surf = surf.Rotate(occ.Axis((0, 0, 0), occ.X), 90)
     surf = surf.Rotate(occ.Axis((0, 0, 0), occ.Z), -angle)
     return surf
+
+
+def convert_to_volume_mesh(surface_mesh):
+    new_mesh = NetgenMesh()
+
+    # Copy nodes
+    old_to_new = {}
+    for e in surface_mesh.Elements2D():
+        for v in e.vertices:
+            if (v not in old_to_new):
+                old_to_new[v] = new_mesh.Add(surface_mesh[v])
+
+    # Create a face descriptor that is used for all elements
+    # (one single surface with one domain inside and no domain outside)
+    face_descriptor = new_mesh.Add(FaceDescriptor(surfnr=1, domin=1, domout=0, bc=1))
+
+    # Copy elements
+    for e in surface_mesh.Elements2D():
+        new_mesh.Add(Element2D(face_descriptor, [old_to_new[v] for v in e.vertices]))
+
+    # Generate volume mesh from surface
+    new_mesh.GenerateVolumeMesh()
+    return new_mesh
