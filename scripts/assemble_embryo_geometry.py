@@ -32,11 +32,9 @@ posterior_cap = occ.Face(occ.Wire([e.Reversed() for e in mantle.edges[occ.Z < mi
 anterior_cap = occ.Face(occ.Wire([e.Reversed() for e in mantle.edges[occ.Z > max_threshold]]))
 
 # %%
-# Combine all surfaces and do a little explosion drawing
+# Combine all surfaces and draw the wireframe
 total_surface = occ.Compound([mantle, anterior_cap, posterior_cap])
-midpoint = embryo_model.central_spline(0.5)
-exploded = sum([f.Move(0.3 * (f.center - occ.Pnt(*midpoint))) for f in mantle.faces])
-Draw(exploded + anterior_cap + posterior_cap)
+Draw(occ.Wire(total_surface.edges))
 
 # %%
 # Mesh the whole surface
@@ -46,12 +44,11 @@ geo = occ.OCCGeometry(total_surface)
 surface_mesh = geo.GenerateMesh(maxh=4)
 
 # %%
-# Rotate the view so that the first surfaces is in the front (the red one bordered by two green ones)
-settings = {"camera": {"Light": {"ambient": 1.0, "diffuse": 1.0}, "euler_angles": [180,90,0], "transformations": [{"type": "move", "dir": [0, 0, 1]}]}}
+# Rotate the view so that the first surface is in the front (the red one bordered by two green ones)
+settings = {"camera": {"Light": {"ambient": 1.0, "diffuse": 1.0}, "euler_angles": [180, 90, 0], "transformations": [{"type": "move", "dir": [0, 0, 1]}]}}
 Draw(surface_mesh, settings=settings)
 
 # %%
-vol_mesh = convert_to_volume_mesh(surface_mesh)
-Draw(vol_mesh)
-
-# %%
+vol_mesh, _ = convert_to_volume_mesh(surface_mesh, max_node_distance=0.2)
+print(f"Number of tetrahedra: {vol_mesh.ne}")
+Draw(vol_mesh, settings=settings)

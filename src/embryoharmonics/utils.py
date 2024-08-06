@@ -1,8 +1,9 @@
 import math
-from typing import Dict
+from typing import Dict, Tuple
 
 import numpy as np
 from scipy.interpolate import CubicSpline
+from scipy.spatial import KDTree
 from netgen import occ
 from ngsolve import Mesh
 from netgen.meshing import FaceDescriptor, Element2D
@@ -100,8 +101,6 @@ def get_spline_surface(embryo_model, n, i):
     spline2 = embryo_model.transverse_splines[neighbor]
     x1 = spline1(t)
     x2 = spline2(t)
-    direction = (x1[0] + x2[0]) / 2
-    normal = direction / np.linalg.norm(direction)
 
     # Rotate so that the domain of the spline is [-a, a] x [0, b] x {0} and the z values represent its height
     midpoint_angle = (2 * i + 1) / (2 * embryo_model.n_transverse_splines) * 180
@@ -117,15 +116,39 @@ def get_spline_surface(embryo_model, n, i):
     return surf
 
 
-def convert_to_volume_mesh(surface_mesh):
+def convert_to_volume_mesh(surface_mesh, max_node_distance=None) -> Tuple[Mesh, Dict[int, int]]:
+    n_nodes = len(surface_mesh.Points())
+    node_is_unique = np.ones(n_nodes, dtype=bool)
     new_mesh = NetgenMesh()
-
-    # Copy nodes
     old_to_new = {}
-    for e in surface_mesh.Elements2D():
-        for v in e.vertices:
-            if (v not in old_to_new):
-                old_to_new[v] = new_mesh.Add(surface_mesh[v])
+
+    if max_node_distance is not None:
+        # Find all nodes that are too close to each other ("doppelgängers")
+        kdtree = KDTree(surface_mesh.Coordinates())
+        dist = kdtree.sparse_distance_matrix(kdtree, max_distance=max_node_distance, output_type='ndarray')
+
+        # Remove self-distances and compress i->j / j->i pairs
+        dist = dist[dist['i'] != dist['j']]
+        pairs = np.vstack([dist['i'], dist['j']])
+        pairs = np.sort(pairs, axis=0)
+        pairs = np.unique(pairs, axis=1)
+
+        # Mark all nodes that have a doppelgänger
+        node_is_unique[pairs[0]] = False
+        node_is_unique[pairs[1]] = False
+
+        # Copy non-unique nodes
+        for i, j in zip(pairs[0], pairs[1]):
+            # Identify doppelgängers in new mesh (node indices are 1-based)
+            new_node = new_mesh.Add(surface_mesh[i + 1])
+            old_to_new[i + 1] = new_node
+            old_to_new[j + 1] = new_node
+
+    # Copy unique nodes
+    for i in range(n_nodes):
+        if node_is_unique[i]:
+            # Node indices are 1-based
+            old_to_new[i + 1] = new_mesh.Add(surface_mesh[i + 1])
 
     # Create a face descriptor that is used for all elements
     # (one single surface with one domain inside and no domain outside)
@@ -137,4 +160,4 @@ def convert_to_volume_mesh(surface_mesh):
 
     # Generate volume mesh from surface
     new_mesh.GenerateVolumeMesh()
-    return new_mesh
+    return new_mesh, old_to_new
