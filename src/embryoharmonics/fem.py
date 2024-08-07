@@ -2,12 +2,22 @@ from typing import Tuple, Dict
 
 import numpy as np
 from scipy.spatial import KDTree
-from ngsolve import Mesh
 from netgen.meshing import FaceDescriptor, Element2D
 from netgen.meshing import Mesh as NetgenMesh
 
 
-def convert_to_volume_mesh(surface_mesh, max_node_distance=None) -> Tuple[Mesh, Dict[int, int]]:
+def _convert_to_volume_mesh(
+        surface_mesh: NetgenMesh,
+        max_node_distance: float = None
+) -> Tuple[NetgenMesh, Dict[int, int]]:
+    """
+    Convert a surface mesh to a volume mesh by adding a single domain inside the surface and no domain outside. If the
+    surface mesh is not closed (i.e., meshing fails), close nodes can be identified by a maximum distance threshold and
+    merged to close it.
+    :param surface_mesh: The surface mesh to convert
+    :param max_node_distance: Maximum distance between nodes to identify close nodes; if None, no nodes are merged
+    :return: The volume mesh and a mapping from old node indices to new ones
+    """
     n_nodes = len(surface_mesh.Points())
     node_is_unique = np.ones(n_nodes, dtype=bool)
     new_mesh = NetgenMesh()

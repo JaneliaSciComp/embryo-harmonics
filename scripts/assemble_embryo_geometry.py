@@ -3,8 +3,8 @@ import h5py
 import netgen.occ as occ
 from netgen.webgui import Draw
 
-from embryoharmonics.geometry import load_avg_models, get_spline_surface
-from embryoharmonics.fem import convert_to_volume_mesh
+from embryoharmonics.geometry import load_avg_models, _get_spline_surface
+from embryoharmonics.fem import _convert_to_volume_mesh
 
 # %%
 path = "/home/innerbergerm@hhmi.org/big-data/worm-geometry/celegans_avg_models_2024_04_23.h5"
@@ -19,7 +19,7 @@ embryo_model = load_avg_models(h5file, time_steps=[time_step])[time_step]
 # Generate surface splines (using fewer interpolations points seems to yield better results because of numerical instabilities)
 n_interpolation = 32
 n_splines = embryo_model.n_transverse_splines
-spline_surfaces = [get_spline_surface(embryo_model, n_interpolation, i) for i in range(n_splines)]
+spline_surfaces = [_get_spline_surface(embryo_model, n_interpolation, i) for i in range(n_splines)]
 colors = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]  # [R, G, B]
 for i, surf in enumerate(spline_surfaces):
     surf.col = colors[i % 3]
@@ -51,6 +51,6 @@ settings = {"camera": {"Light": {"ambient": 1.0, "diffuse": 1.0}, "euler_angles"
 Draw(surface_mesh, settings=settings)
 
 # %%
-vol_mesh, _ = convert_to_volume_mesh(surface_mesh, max_node_distance=0.2)
+vol_mesh, _ = _convert_to_volume_mesh(surface_mesh, max_node_distance=0.2)
 print(f"Number of tetrahedra: {vol_mesh.ne}")
 Draw(vol_mesh, settings=settings)
