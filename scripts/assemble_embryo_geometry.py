@@ -51,6 +51,6 @@ settings = {"camera": {"Light": {"ambient": 1.0, "diffuse": 1.0}, "euler_angles"
 Draw(surface_mesh, settings=settings)
 
 # %%
-vol_mesh, _ = _convert_to_volume_mesh(surface_mesh, max_node_distance=0.2)
+vol_mesh, _ = _convert_to_volume_mesh(surface_mesh, mesh_size=4, max_node_distance=0.2)
 print(f"Number of tetrahedra: {vol_mesh.ne}")
 Draw(vol_mesh, settings=settings)

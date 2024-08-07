@@ -2,12 +2,14 @@ from typing import Tuple, Dict
 
 import numpy as np
 from scipy.spatial import KDTree
-from netgen.meshing import FaceDescriptor, Element2D
+from netgen import occ
+from netgen.meshing import FaceDescriptor, Element2D, meshsize
 from netgen.meshing import Mesh as NetgenMesh
 
 
 def _convert_to_volume_mesh(
         surface_mesh: NetgenMesh,
+        mesh_size: float,
         max_node_distance: float = None
 ) -> Tuple[NetgenMesh, Dict[int, int]]:
     """
@@ -15,6 +17,7 @@ def _convert_to_volume_mesh(
     surface mesh is not closed (i.e., meshing fails), close nodes can be identified by a maximum distance threshold and
     merged to close it.
     :param surface_mesh: The surface mesh to convert
+    :param mesh_size: The maximum mesh size
     :param max_node_distance: Maximum distance between nodes to identify close nodes; if None, no nodes are merged
     :return: The volume mesh and a mapping from old node indices to new ones
     """
@@ -60,5 +63,21 @@ def _convert_to_volume_mesh(
         new_mesh.Add(Element2D(face_descriptor, [old_to_new[v] for v in e.vertices]))
 
     # Generate volume mesh from surface
-    new_mesh.GenerateVolumeMesh()
+    new_mesh.GenerateVolumeMesh(maxh=mesh_size)
     return new_mesh, old_to_new
+
+
+def mesh_embryo_geometry(
+        worm_geometry: occ.Compound,
+        mesh_size: float
+) -> NetgenMesh:
+    """
+    Mesh the geometry of an embryo.
+    :param worm_geometry: The geometry of the embryo to mesh
+    :param mesh_size: The maximum mesh size
+    :return: The volume mesh of the embryo geometry
+    """
+    geo = occ.OCCGeometry(worm_geometry)
+    surface_mesh = geo.GenerateMesh(maxh=mesh_size)
+    vol_mesh, _ = _convert_to_volume_mesh(surface_mesh, mesh_size, mesh_size / 10)
+    return vol_mesh
