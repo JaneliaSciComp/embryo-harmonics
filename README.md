@@ -1,5 +1,5 @@
 # ECM simulations
-A collection of scripts for computing eigenfunctions on geometrical model of C elegans embryos using [NGSolve](https://ngsolve.org/).
+A collection of scripts for computing eigenfunctions on geometrical models of C elegans embryos using [NGSolve](https://ngsolve.org/).
 
 ### Setup
 Run the following line from the terminal to create a new environment called `embryo-harmonics`:
