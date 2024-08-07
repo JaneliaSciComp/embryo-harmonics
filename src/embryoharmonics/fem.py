@@ -5,6 +5,7 @@ from scipy.spatial import KDTree
 from netgen import occ
 from netgen.meshing import FaceDescriptor, Element2D, meshsize
 from netgen.meshing import Mesh as NetgenMesh
+from ngsolve import Mesh as NgsMesh
 
 
 def _convert_to_volume_mesh(
@@ -80,4 +81,4 @@ def mesh_embryo_geometry(
     geo = occ.OCCGeometry(worm_geometry)
     surface_mesh = geo.GenerateMesh(maxh=mesh_size)
     vol_mesh, _ = _convert_to_volume_mesh(surface_mesh, mesh_size, mesh_size / 10)
-    return vol_mesh
+    return NgsMesh(vol_mesh)
