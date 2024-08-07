@@ -6,7 +6,7 @@ import h5py
 import numpy as np
 from matplotlib import pyplot as plt
 
-from embryoharmonics.utils import load_avg_models
+from embryoharmonics.geometry import load_avg_models
 
 # %%
 # Open HDF5 file

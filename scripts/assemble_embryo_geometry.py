@@ -3,7 +3,8 @@ import h5py
 import netgen.occ as occ
 from netgen.webgui import Draw
 
-from embryoharmonics.utils import load_avg_models, get_spline_surface, convert_to_volume_mesh
+from embryoharmonics.geometry import load_avg_models, get_spline_surface
+from embryoharmonics.fem import convert_to_volume_mesh
 
 # %%
 path = "/home/innerbergerm@hhmi.org/big-data/worm-geometry/celegans_avg_models_2024_04_23.h5"
@@ -15,9 +16,10 @@ time_step = 1
 embryo_model = load_avg_models(h5file, time_steps=[time_step])[time_step]
 
 # %%
-# Generate surface splines (using less interpolations points seems to yield better results because of numerical instabilities)
-N = embryo_model.n_transverse_splines
-spline_surfaces = [get_spline_surface(embryo_model, N, i) for i in range(N)]
+# Generate surface splines (using fewer interpolations points seems to yield better results because of numerical instabilities)
+n_interpolation = 32
+n_splines = embryo_model.n_transverse_splines
+spline_surfaces = [get_spline_surface(embryo_model, n_interpolation, i) for i in range(n_splines)]
 colors = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]  # [R, G, B]
 for i, surf in enumerate(spline_surfaces):
     surf.col = colors[i % 3]
