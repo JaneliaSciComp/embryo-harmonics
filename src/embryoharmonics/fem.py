@@ -210,3 +210,30 @@ def interpolate_gene_data(
 
         # Add the interpolated data to the pyvista data object
         pv_data[data.name] = solution.components[0].vec.FV().NumPy().copy()
+
+
+def compute_eigen_coefficients(
+        pv_data: pv.UnstructuredGrid,
+        names: str | Iterable[str],
+) -> Dict[str, np.ndarray]:
+    """
+    Compute the coefficients of the given fields with respect to the eigenfunctions.
+    :param pv_data: The mesh data to compute the coefficients for
+    :param names: The names of the fields to compute the coefficients for
+    :return: The coefficients of the fields with respect to the eigenfunctions
+    """
+    if isinstance(names, str):
+        names = [names]
+
+    array_names = pv_data.array_names
+    n_eigenfunctions = sum("eigenfunction" in name for name in array_names)
+    integral_weights = pv_data["integration weights"]
+    eigenfunctions = np.array([pv_data[f"eigenfunction {i}"] for i in range(n_eigenfunctions)])
+    coefficients = {}
+
+    for name in names:
+        gene = pv_data[name]
+        for j in range(n_eigenfunctions):
+            coefficients[name] = np.dot(eigenfunctions, gene * integral_weights)
+
+    return coefficients

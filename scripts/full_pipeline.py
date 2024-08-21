@@ -15,9 +15,10 @@
 # %%
 import h5py
 import pyvista as pv
+import matplotlib.pyplot as plt
 
 from embryoharmonics.geometry import load_avg_models, assemble_embryo_geometry, load_gene_data
-from embryoharmonics.fem import mesh_embryo_geometry, compute_harmonics, interpolate_gene_data
+from embryoharmonics.fem import mesh_embryo_geometry, compute_harmonics, interpolate_gene_data, compute_eigen_coefficients
 from embryoharmonics.visualization import plot_eigenfunction
 
 # %%
@@ -54,13 +55,21 @@ mat_file = h5py.File("/home/innerbergerm@hhmi.org/big-data/worm-geometry/cwn_pos
 gene_data, time = load_gene_data(mat_file, "cwn", time_steps=[time_step])
 gene_data = gene_data[time_step]
 interpolate_gene_data(mesh, gene_data, pv_data)
+print(pv_data.array_names)
 
 # %%
 # The gene expression data was added to the pyvista data object
-print(pv_data.array_names)
 plotter = pv.Plotter()
 slices = pv_data.slice_orthogonal()
 plotter.add_mesh(slices, scalars="cwn", cmap="turbo")
 plotter.show()
+
+# %%
+# With this smooth interpolation, it's possible to compute the eigen-coefficients of the gene expression
+eigen_coefficients = compute_eigen_coefficients(pv_data, "cwn")
+plt.scatter(range(k), eigen_coefficients["cwn"])
+plt.xlabel("# harmonic")
+plt.ylabel("coefficient")
+plt.show()
 
 # %%
