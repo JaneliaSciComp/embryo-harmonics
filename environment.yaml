@@ -7,7 +7,7 @@ dependencies:
   - numpy
   - scipy
   - matplotlib
-  - tqdm
+  - pyvista
   - jupyter
   - jupytext
   - pip
