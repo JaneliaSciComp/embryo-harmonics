@@ -1,13 +1,14 @@
 from typing import Tuple, Dict, Literal
 
 import numpy as np
+import pyvista as pv
 from scipy.spatial import KDTree
 import scipy.sparse as sp
 from netgen import occ
 from netgen.meshing import FaceDescriptor, Element2D, meshsize
 from netgen.meshing import Mesh as NetgenMesh
 from ngsolve import Mesh as NgsMesh
-from ngsolve import H1, grad, dx, BilinearForm
+from ngsolve import H1, grad, dx, BilinearForm, LinearForm
 
 
 def _convert_to_volume_mesh(
@@ -91,13 +92,13 @@ def compute_harmonics(
         *,
         k: int = 10,
         boundary_condition: Literal['dirichlet', 'neumann'] = "neumann"
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[pv.UnstructuredGrid, np.ndarray]:
     """
     Compute the first n eigenvectors and eigenvalues of the Laplace operator on a given mesh.
     :param mesh: The mesh to compute the eigenfunctions on
     :param k: The number of eigenfunctions to compute
     :param boundary_condition: The boundary condition to apply (either 'dirichlet' or 'neumann')
-    :return: The eigenvectors and eigenvalues
+    :return: The eigenvectors (as pyvista data structure) and eigenvalues
     """
 
     # Set up lowest-order finite element problem for the Laplace operator
@@ -111,6 +112,10 @@ def compute_harmonics(
     m = BilinearForm(fes, symmetric=True)
     m += u * v * dx
     m.Assemble()
+
+    f = LinearForm(fes)
+    f += v * dx
+    f.Assemble()
 
     match boundary_condition:
         case 'dirichlet':
@@ -127,10 +132,31 @@ def compute_harmonics(
     full_eigvecs = np.zeros((fes.ndof, k))
     full_eigvecs[mask, :] = eigvecs
 
-    return full_eigvecs, eigvals
+    pv_data = _to_vtk(mesh)
+    for i in range(k):
+        pv_data[f"eigenfunction {i}"] = full_eigvecs[:, i]
+    pv_data["integration weights"] = f.vec.FV().NumPy()
+
+    return pv_data, eigvals
 
 
 def _to_scipy_csr(blf, mask):
     row, col, val = blf.mat.COO()
     sparse = sp.csr_matrix((val, (row, col)))
     return sparse[mask][:, mask]
+
+def _to_vtk(mesh: NgsMesh,) -> pv.UnstructuredGrid:
+    """
+    Convert an NGSolve mesh to a pyvista.UnstructuredGrid object.
+    :param mesh: The NGSolve mesh to convert
+    :return: A :class:`pyvista.UnstructuredGrid` object containing the mesh
+    """
+    points = mesh.ngmesh.Coordinates()
+    cells = []
+    cell_types = []
+    for el in mesh.ngmesh.Elements3D():
+        # NGSolve uses 1-based indexing for vertices
+        cells.append([4] + [el.vertices[i].nr - 1 for i in range(4)])
+        cell_types.append(pv.CellType.TETRA)
+
+    return pv.UnstructuredGrid(cells, cell_types, points)

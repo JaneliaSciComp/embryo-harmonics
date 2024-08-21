@@ -63,3 +63,5 @@ solution.vec.data = a.mat.Inverse(fes.FreeDofs()) * f.vec
 print(f"Integral of u: {Integrate(solution.components[0], mesh)}")
 print(f"Value of Lagrange multiplier: {solution.components[1].vec}")
 Draw(solution.components[0])
+
+# %%

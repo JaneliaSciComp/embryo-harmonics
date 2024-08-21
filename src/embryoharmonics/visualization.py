@@ -1,31 +1,32 @@
-import numpy as np
 import pyvista as pv
-from ngsolve import Mesh
-from pyvista import UnstructuredGrid
 
-
-def to_vtk(
-        mesh: Mesh,
-        eigenfunctions: np.ndarray,
-) -> UnstructuredGrid:
+def plot_eigenfunction(
+        pv_data: pv.UnstructuredGrid,
+        k: int,
+        cmap: str = 'turbo',
+) -> pv.Plotter:
     """
-    Convert mesh and eigenfunctions to a pyvista.UnstructuredGrid object.
-    :param mesh: The underlying mesh
-    :param eigenfunctions: The eigenfunctions as a numpy array
-    :return: A :class:`pyvista.UnstructuredGrid` object containing mesh and eigenfunctions
+    Plot the k-th eigenfunction of a given mesh.
+    :param pv_data: The mesh data to plot
+    :param k: The index of the eigenfunction to plot
+    :param cmap: The colormap to use (default: 'turbo')
+    :return: The plotter object
     """
-    points = mesh.ngmesh.Coordinates()
-    cells = []
-    cell_types = []
-    for el in mesh.ngmesh.Elements3D():
-        # NGSolve uses 1-based indexing for vertices
-        cells.append([4] + [el.vertices[i].nr - 1 for i in range(4)])
-        cell_types.append(pv.CellType.TETRA)
+    scalar_name = f"eigenfunction {k}"
 
-    pv_data = pv.UnstructuredGrid(cells, cell_types, points)
+    camera = pv.Camera()
+    camera.position = (-400.0, 400.0, -500.0)
+    camera.focal_point = (100.0, 50.0, 5.0)
 
-    n_eigenfunctions = eigenfunctions.shape[1]
-    for i in range(n_eigenfunctions):
-        pv_data[f"Eigenfunction {i}"] = eigenfunctions[:, i]
+    axes = pv.Axes(show_actor=True, actor_scale=2.0, line_width=5)
+    axes.origin = (3.0, 3.0, 3.0)
 
-    return pv_data
+    plotter = pv.Plotter()
+    plotter.camera = camera
+    slice1 = pv_data.slice(normal=[1, 0, 0]).translate((400, 0, -200))
+    plotter.add_mesh(slice1, scalars=scalar_name, cmap=cmap)
+    slice2 = pv_data.slice(normal=[0, 1, 0]).translate((200, 0, -100))
+    plotter.add_mesh(slice2, scalars=scalar_name, cmap=cmap)
+    slice3 = pv_data.slice_along_axis(n=10, axis="z")
+    plotter.add_mesh(slice3, scalars=scalar_name, cmap=cmap)
+    return plotter
