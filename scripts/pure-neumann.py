@@ -20,11 +20,11 @@
 #
 # The usual approach is to factor out the kernel of the differential operator by requiring that $\int_\Omega u \, dx = 0$.
 #
-# Altogether, this leads to the following weak saddle-point problem. Find $u \in V := H^1(\Omega)$ and $\lambda \in Q := \mathbb{R}$ such that for all $(v, \sigma) \in V \times Q$ it holds that
+# Altogether, this leads to the following weak saddle-point problem. Find $u \in V := H^1(\Omega)$ and $p \in Q := \mathbb{R}$ such that for all $(v, q) \in V \times Q$ it holds that
 #
-# $\int_\Omega \nabla u \cdot \nabla v \, dx + \lambda \int_\Omega v \, dx = \int_\Omega f v \, dx$
+# $\int_\Omega \nabla u \cdot \nabla v \, dx + p \int_\Omega v \, dx = \int_\Omega f v \, dx$
 #
-# $\sigma \int_\Omega u \, dx = 0\, dx$
+# $q \int_\Omega u \, dx = 0\, dx$
 
 # %%
 from ngsolve import *
@@ -40,12 +40,12 @@ fes = V * Q
 
 # %%
 # Formulate saddle-point problem
-(u, lam), (v, sig) = fes.TnT()
+(u, p), (v, q) = fes.TnT()
 
 a = BilinearForm(fes)
 a += grad(u) * grad(v) * dx
-a += lam * v * dx
-a += sig * u * dx
+a += p * v * dx
+a += q * u * dx
 
 f = LinearForm(fes)
 f += x * y * v * dx  # f(x, y) = xy
