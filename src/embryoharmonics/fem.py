@@ -1,11 +1,13 @@
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Literal
 
 import numpy as np
 from scipy.spatial import KDTree
+import scipy.sparse as sp
 from netgen import occ
 from netgen.meshing import FaceDescriptor, Element2D, meshsize
 from netgen.meshing import Mesh as NetgenMesh
 from ngsolve import Mesh as NgsMesh
+from ngsolve import H1, grad, dx, BilinearForm
 
 
 def _convert_to_volume_mesh(
@@ -82,3 +84,53 @@ def mesh_embryo_geometry(
     surface_mesh = geo.GenerateMesh(maxh=mesh_size)
     vol_mesh, _ = _convert_to_volume_mesh(surface_mesh, mesh_size, mesh_size / 10)
     return NgsMesh(vol_mesh)
+
+
+def compute_harmonics(
+        mesh,
+        *,
+        k: int = 10,
+        boundary_condition: Literal['dirichlet', 'neumann'] = "neumann"
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute the first n eigenvectors and eigenvalues of the Laplace operator on a given mesh.
+    :param mesh: The mesh to compute the eigenfunctions on
+    :param k: The number of eigenfunctions to compute
+    :param boundary_condition: The boundary condition to apply (either 'dirichlet' or 'neumann')
+    :return: The eigenvectors and eigenvalues
+    """
+
+    # Set up lowest-order finite element problem for the Laplace operator
+    fes = H1(mesh, order=1, dirichlet="default")
+    u, v = fes.TnT()
+
+    a = BilinearForm(fes, symmetric=True)
+    a += grad(u) * grad(v) * dx
+    a.Assemble()
+
+    m = BilinearForm(fes, symmetric=True)
+    m += u * v * dx
+    m.Assemble()
+
+    match boundary_condition:
+        case 'dirichlet':
+            mask = np.array([free for free in fes.FreeDofs()])
+        case 'neumann':
+            mask = np.ones(fes.ndof, dtype=bool)
+        case _:
+            raise ValueError(f"Invalid boundary condition '{boundary_condition}'")
+
+    stiffness = _to_scipy_csr(a, mask)
+    mass = _to_scipy_csr(m, mask)
+    eigvals, eigvecs = sp.linalg.eigsh(A=stiffness, M=mass, k=k, which='LM', sigma=0.0)
+
+    full_eigvecs = np.zeros((fes.ndof, k))
+    full_eigvecs[mask, :] = eigvecs
+
+    return full_eigvecs, eigvals
+
+
+def _to_scipy_csr(blf, mask):
+    row, col, val = blf.mat.COO()
+    sparse = sp.csr_matrix((val, (row, col)))
+    return sparse[mask][:, mask]
