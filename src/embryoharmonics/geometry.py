@@ -1,5 +1,6 @@
 import math
-from typing import Dict, Iterable
+from dataclasses import dataclass
+from typing import Dict, Iterable, Tuple
 
 import h5py
 import numpy as np
@@ -27,6 +28,50 @@ class EmbryoModel:
     @property
     def n_transverse_splines(self):
         return len(self.transverse_splines)
+
+
+@dataclass
+class GeneData:
+    """
+    Data class representing the expression data for a gene at a single point in time.
+    """
+    name: str
+    location: np.ndarray
+    activity: np.ndarray
+
+
+def load_gene_data(
+        h5file: h5py.File,
+        gene_name: str,
+        *,
+        time_steps: Iterable[int] = None
+) -> Tuple[Dict[int, GeneData], np.ndarray]:
+    """
+    Load the gene expression data from the given file.
+    :param h5file: The name of the HDF5 file containing the gene expression data
+    :param gene_name: The name of the gene to load
+    :param time_steps: Which time steps to load (if None, all time steps are loaded; 1-based)
+    :return: A dictionary of time_step to :class:`GeneData` objects containing the gene expression data and the time
+    """
+    # TODO: find out what the data format is and make more general
+    print("WARNING: Due to unspecified data format, this function most likely cannot deal with general data.")
+
+    time = h5file[f"{gene_name}_time"][0]
+    if time_steps is None:
+        # there is one extra group (measurements)
+        time_steps = range(len(time))
+
+    gene_act = h5file[f"{gene_name}_gene_act"]
+    pos = h5file[f"{gene_name}_xyz"]
+
+    gene_data = {}
+    time_slice = []
+    for time_step in time_steps:
+        i = time_step - 1
+        gene_data[time_step] = GeneData(gene_name, pos[i], gene_act[i])
+        time_slice.append(time[i])
+
+    return gene_data, np.array(time_slice)
 
 
 def load_measurement(
