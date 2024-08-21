@@ -1,14 +1,17 @@
-from typing import Tuple, Dict, Literal
+from ctypes.wintypes import VARIANT_BOOL
+from typing import Tuple, Dict, Literal, Iterable
 
 import numpy as np
 import pyvista as pv
 from scipy.spatial import KDTree
 import scipy.sparse as sp
 from netgen import occ
-from netgen.meshing import FaceDescriptor, Element2D, meshsize
+from netgen.meshing import FaceDescriptor, Element2D
 from netgen.meshing import Mesh as NetgenMesh
 from ngsolve import Mesh as NgsMesh
-from ngsolve import H1, grad, dx, BilinearForm, LinearForm
+from ngsolve import H1, grad, dx, BilinearForm, LinearForm, FESpace, GridFunction
+
+from embryoharmonics.geometry import GeneData
 
 
 def _convert_to_volume_mesh(
@@ -145,6 +148,7 @@ def _to_scipy_csr(blf, mask):
     sparse = sp.csr_matrix((val, (row, col)))
     return sparse[mask][:, mask]
 
+
 def _to_vtk(mesh: NgsMesh,) -> pv.UnstructuredGrid:
     """
     Convert an NGSolve mesh to a pyvista.UnstructuredGrid object.
@@ -160,3 +164,49 @@ def _to_vtk(mesh: NgsMesh,) -> pv.UnstructuredGrid:
         cell_types.append(pv.CellType.TETRA)
 
     return pv.UnstructuredGrid(cells, cell_types, points)
+
+
+def interpolate_gene_data(
+        mesh: NgsMesh,
+        gene_data: GeneData | Iterable[GeneData],
+        pv_data: pv.UnstructuredGrid
+) -> None:
+    """
+    Interpolate gene expression data onto the mesh by solving a Poisson equation with the gene expression as the sources
+    and homogeneous Neumann boundary conditions. Nan values are ignored.
+    :param mesh: The mesh to interpolate the gene data onto
+    :param gene_data: A :class:`GeneData` object containing the gene expression data
+    :param pv_data: A :class:`pyvista.UnstructuredGrid` object where the interpolated data is stored as a scalar field
+    """
+    if not isinstance(gene_data, Iterable):
+        gene_data = [gene_data]
+
+    # Set up lowest-order finite element problem for the Poisson equation
+    V = H1(mesh, order=1)
+    Q = FESpace("number", mesh)
+    fes = V * Q
+
+    (u, p), (v, q) = fes.TnT()
+    solution = GridFunction(fes)
+
+    a = BilinearForm(fes)
+    a += grad(u) * grad(v) * dx
+    a += p * v * dx
+    a += q * u * dx
+    a.Assemble()
+    a_inverse = a.mat.Inverse(fes.FreeDofs())
+
+    for data in gene_data:
+        # Filter Nan values
+        non_nan_indices = np.where(np.logical_not(np.isnan(data.activity)))[0]
+
+        # Use gene expression data as point sources
+        f = LinearForm(fes)
+        for i in non_nan_indices:
+            f += (data.activity[i] * v)(*data.location[i])
+
+        f.Assemble()
+        solution.vec.data = a_inverse * f.vec
+
+        # Add the interpolated data to the pyvista data object
+        pv_data[data.name] = solution.components[0].vec.FV().NumPy().copy()
