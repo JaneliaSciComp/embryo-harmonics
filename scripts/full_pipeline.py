@@ -14,6 +14,7 @@
 
 # %%
 import h5py
+import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
 
@@ -36,7 +37,7 @@ print(f"Number of elements: {mesh.ne}")
 # Compute first few eigenvectors
 # We want the smallest eigenvalues, so search for the largest in shift-invert mode (i.e., find largest w' = 1 / (w - sigma))
 k = 30
-pv_data, eigvals = compute_harmonics(mesh, k=k, boundary_condition="neumann")
+pv_data, eigvals, mass = compute_harmonics(mesh, k=k, boundary_condition="neumann")
 
 # %%
 # Visualize eigenvector
@@ -66,8 +67,8 @@ plotter.show()
 
 # %%
 # With this smooth interpolation, it's possible to compute the eigen-coefficients of the gene expression
-eigen_coefficients = compute_eigen_coefficients(pv_data, "cwn")
-plt.scatter(range(k), eigen_coefficients["cwn"])
+eigen_coefficients = compute_eigen_coefficients(pv_data, mass, "cwn")
+plt.scatter(range(k), np.abs(eigen_coefficients["cwn"]))
 plt.xlabel("# harmonic")
 plt.ylabel("coefficient")
 plt.show()

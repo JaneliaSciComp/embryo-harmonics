@@ -95,13 +95,13 @@ def compute_harmonics(
         *,
         k: int = 10,
         boundary_condition: Literal['dirichlet', 'neumann'] = "neumann"
-) -> Tuple[pv.UnstructuredGrid, np.ndarray]:
+) -> Tuple[pv.UnstructuredGrid, np.ndarray, sp.csr_matrix]:
     """
     Compute the first n eigenvectors and eigenvalues of the Laplace operator on a given mesh.
     :param mesh: The mesh to compute the eigenfunctions on
     :param k: The number of eigenfunctions to compute
     :param boundary_condition: The boundary condition to apply (either 'dirichlet' or 'neumann')
-    :return: The eigenvectors (as pyvista data structure) and eigenvalues
+    :return: The eigenvectors (as pyvista data structure), eigenvalues, and mass matrix
     """
 
     # Set up lowest-order finite element problem for the Laplace operator
@@ -140,7 +140,7 @@ def compute_harmonics(
         pv_data[f"eigenfunction {i}"] = full_eigvecs[:, i]
     pv_data["integration weights"] = f.vec.FV().NumPy()
 
-    return pv_data, eigvals
+    return pv_data, eigvals, mass
 
 
 def _to_scipy_csr(blf, mask):
@@ -214,11 +214,13 @@ def interpolate_gene_data(
 
 def compute_eigen_coefficients(
         pv_data: pv.UnstructuredGrid,
+        mass_matrix: sp.csr_matrix,
         names: str | Iterable[str],
 ) -> Dict[str, np.ndarray]:
     """
     Compute the coefficients of the given fields with respect to the eigenfunctions.
     :param pv_data: The mesh data to compute the coefficients for
+    :param mass_matrix: The mass matrix of the underlying mesh
     :param names: The names of the fields to compute the coefficients for
     :return: The coefficients of the fields with respect to the eigenfunctions
     """
@@ -234,6 +236,6 @@ def compute_eigen_coefficients(
     for name in names:
         gene = pv_data[name]
         for j in range(n_eigenfunctions):
-            coefficients[name] = np.dot(eigenfunctions, gene * integral_weights)
+            coefficients[name] = np.dot(eigenfunctions, mass_matrix @ gene)
 
     return coefficients
