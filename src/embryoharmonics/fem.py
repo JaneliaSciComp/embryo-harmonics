@@ -9,7 +9,7 @@ from netgen import occ
 from netgen.meshing import FaceDescriptor, Element2D
 from netgen.meshing import Mesh as NetgenMesh
 from ngsolve import Mesh as NgsMesh
-from ngsolve import H1, grad, dx, BilinearForm, LinearForm, FESpace, GridFunction, Integrate
+from ngsolve import H1, grad, dx, BilinearForm, LinearForm, FESpace, GridFunction, Integrate, TaskManager
 
 from embryoharmonics.geometry import GeneData
 
@@ -186,39 +186,39 @@ def interpolate_gene_data(
         gene_data = [gene_data]
 
     # Set up lowest-order finite element problem for the Poisson equation
-    V = H1(mesh, order=1)
-    Q = FESpace("number", mesh)
-    fes = V * Q
-
-    (u, p), (v, q) = fes.TnT()
-    solution = GridFunction(fes)
+    n_time_steps = 100
+    dt = 1 / n_time_steps
+    fes = H1(mesh, order=1)
+    u, v = fes.TnT()
 
     a = BilinearForm(fes)
-    a += (1 / smoothing_factor) * grad(u) * grad(v) * dx
-    a += p * v * dx
-    a += q * u * dx
-    a.Assemble()
-    a_inverse = a.mat.Inverse(fes.FreeDofs())
+    a += smoothing_factor * grad(u) * grad(v) * dx
+    m = BilinearForm(fes)
+    m += u * v * dx
 
-    volume_density = 1 / Integrate(1, mesh)
+    with TaskManager():
+        a.Assemble()
+        m.Assemble()
+        m.mat.AsVector().data += dt * a.mat.AsVector()
+        mstar_inverse = m.mat.Inverse(fes.FreeDofs())
 
-    for data in gene_data:
-        # Filter Nan values
-        non_nan_indices = np.where(np.logical_not(np.isnan(data.activity)))[0]
+        for data in gene_data:
+            # Filter Nan values
+            non_nan_indices = np.where(np.logical_not(np.isnan(data.activity)))[0]
 
-        # Use gene expression data as point sources
-        f = LinearForm(fes)
-        for i in non_nan_indices:
-            f += (data.activity[i] * v)(*data.location[i])
+            # Use gene expression data as point sources
+            f = LinearForm(fes)
+            for i in non_nan_indices:
+                f += (data.activity[i] * v)(*data.location[i])
 
-        f.Assemble()
-        solution.vec.data = a_inverse * f.vec
+            f.Assemble()
+            solution = GridFunction(fes)
+            for _ in range(n_time_steps):
+                res = dt * (f.vec - a.mat * solution.vec)
+                solution.vec.data += mstar_inverse * res
 
-        full_activation_load = np.sum(data.activity[non_nan_indices])
-        solution.vec.FV().NumPy()[:] += full_activation_load * volume_density
-
-        # Add the interpolated data to the pyvista data object
-        pv_data[data.name] = solution.components[0].vec.FV().NumPy().copy()
+            # Add the interpolated data to the pyvista data object
+            pv_data[data.name] = solution.vec.FV().NumPy().copy()
 
 
 def compute_eigen_coefficients(
