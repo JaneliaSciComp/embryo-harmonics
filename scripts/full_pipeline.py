@@ -25,6 +25,7 @@ from embryoharmonics.visualization import plot_eigenfunction
 # %%
 path = "/home/innerbergerm@hhmi.org/big-data/worm-geometry/celegans_avg_models_2024_04_23.h5"
 h5file = h5py.File(path, 'r')
+pv.set_jupyter_backend('client')
 
 # %%
 time_step = 1
@@ -55,6 +56,10 @@ for i in range(k):
 mat_file = h5py.File("/home/innerbergerm@hhmi.org/big-data/worm-geometry/cwn_pos_data.mat")
 gene_data, time = load_gene_data(mat_file, "cwn", time_steps=[time_step])
 gene_data = gene_data[time_step]
+
+# TODO: there is a mismatch between the scales of the geometry and the gene data (about a factor of 5) - fix this in a general way!
+gene_data.location *= 5
+
 interpolate_gene_data(mesh, gene_data, pv_data)
 print(pv_data.array_names)
 
@@ -69,6 +74,7 @@ plotter.show()
 # With this smooth interpolation, it's possible to compute the eigen-coefficients of the gene expression
 eigen_coefficients = compute_eigen_coefficients(pv_data, mass, "cwn")
 plt.scatter(range(k), np.abs(eigen_coefficients["cwn"]))
+# plt.gca().set_yscale('log')
 plt.xlabel("# harmonic")
 plt.ylabel("coefficient")
 plt.show()
