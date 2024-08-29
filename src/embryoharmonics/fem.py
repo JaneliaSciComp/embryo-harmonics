@@ -9,7 +9,7 @@ from netgen import occ
 from netgen.meshing import FaceDescriptor, Element2D
 from netgen.meshing import Mesh as NetgenMesh
 from ngsolve import Mesh as NgsMesh
-from ngsolve import H1, grad, dx, BilinearForm, LinearForm, FESpace, GridFunction
+from ngsolve import H1, grad, dx, BilinearForm, LinearForm, FESpace, GridFunction, Integrate
 
 from embryoharmonics.geometry import GeneData
 
@@ -200,6 +200,8 @@ def interpolate_gene_data(
     a.Assemble()
     a_inverse = a.mat.Inverse(fes.FreeDofs())
 
+    volume_density = 1 / Integrate(1, mesh)
+
     for data in gene_data:
         # Filter Nan values
         non_nan_indices = np.where(np.logical_not(np.isnan(data.activity)))[0]
@@ -211,6 +213,9 @@ def interpolate_gene_data(
 
         f.Assemble()
         solution.vec.data = a_inverse * f.vec
+
+        full_activation_load = np.sum(data.activity[non_nan_indices])
+        solution.vec.FV().NumPy()[:] += full_activation_load * volume_density
 
         # Add the interpolated data to the pyvista data object
         pv_data[data.name] = solution.components[0].vec.FV().NumPy().copy()
