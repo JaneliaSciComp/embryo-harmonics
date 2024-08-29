@@ -9,7 +9,7 @@ from netgen import occ
 from netgen.meshing import FaceDescriptor, Element2D
 from netgen.meshing import Mesh as NetgenMesh
 from ngsolve import Mesh as NgsMesh
-from ngsolve import H1, grad, dx, BilinearForm, LinearForm, FESpace, GridFunction
+from ngsolve import H1, grad, dx, BilinearForm, LinearForm, FESpace, GridFunction, Integrate, TaskManager
 
 from embryoharmonics.geometry import GeneData
 
@@ -169,7 +169,9 @@ def _to_vtk(mesh: NgsMesh,) -> pv.UnstructuredGrid:
 def interpolate_gene_data(
         mesh: NgsMesh,
         gene_data: GeneData | Iterable[GeneData],
-        pv_data: pv.UnstructuredGrid
+        pv_data: pv.UnstructuredGrid,
+        *,
+        smoothing_factor: float = 1.0
 ) -> None:
     """
     Interpolate gene expression data onto the mesh by solving a Poisson equation with the gene expression as the sources
@@ -177,39 +179,46 @@ def interpolate_gene_data(
     :param mesh: The mesh to interpolate the gene data onto
     :param gene_data: A :class:`GeneData` object containing the gene expression data
     :param pv_data: A :class:`pyvista.UnstructuredGrid` object where the interpolated data is stored as a scalar field
+    :param smoothing_factor: A measure between 0 and infinity of how much smoothing to apply to the interpolated data
+        (the inverse of the diffusion coefficient)
     """
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]
 
     # Set up lowest-order finite element problem for the Poisson equation
-    V = H1(mesh, order=1)
-    Q = FESpace("number", mesh)
-    fes = V * Q
-
-    (u, p), (v, q) = fes.TnT()
-    solution = GridFunction(fes)
+    n_time_steps = 100
+    dt = 1 / n_time_steps
+    fes = H1(mesh, order=1)
+    u, v = fes.TnT()
 
     a = BilinearForm(fes)
-    a += grad(u) * grad(v) * dx
-    a += p * v * dx
-    a += q * u * dx
-    a.Assemble()
-    a_inverse = a.mat.Inverse(fes.FreeDofs())
+    a += smoothing_factor * grad(u) * grad(v) * dx
+    m = BilinearForm(fes)
+    m += u * v * dx
 
-    for data in gene_data:
-        # Filter Nan values
-        non_nan_indices = np.where(np.logical_not(np.isnan(data.activity)))[0]
+    with TaskManager():
+        a.Assemble()
+        m.Assemble()
+        m.mat.AsVector().data += dt * a.mat.AsVector()
+        mstar_inverse = m.mat.Inverse(fes.FreeDofs())
 
-        # Use gene expression data as point sources
-        f = LinearForm(fes)
-        for i in non_nan_indices:
-            f += (data.activity[i] * v)(*data.location[i])
+        for data in gene_data:
+            # Filter Nan values
+            non_nan_indices = np.where(np.logical_not(np.isnan(data.activity)))[0]
 
-        f.Assemble()
-        solution.vec.data = a_inverse * f.vec
+            # Use gene expression data as point sources
+            f = LinearForm(fes)
+            for i in non_nan_indices:
+                f += (data.activity[i] * v)(*data.location[i])
 
-        # Add the interpolated data to the pyvista data object
-        pv_data[data.name] = solution.components[0].vec.FV().NumPy().copy()
+            f.Assemble()
+            solution = GridFunction(fes)
+            for _ in range(n_time_steps):
+                res = dt * (f.vec - a.mat * solution.vec)
+                solution.vec.data += mstar_inverse * res
+
+            # Add the interpolated data to the pyvista data object
+            pv_data[data.name] = solution.vec.FV().NumPy().copy()
 
 
 def compute_eigen_coefficients(

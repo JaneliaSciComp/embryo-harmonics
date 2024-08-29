@@ -60,7 +60,7 @@ gene_data = gene_data[time_step]
 # TODO: there is a mismatch between the scales of the geometry and the gene data (about a factor of 5) - fix this in a general way!
 gene_data.location *= 5
 
-interpolate_gene_data(mesh, gene_data, pv_data)
+interpolate_gene_data(mesh, gene_data, pv_data, smoothing_factor=1000)
 print(pv_data.array_names)
 
 # %%
