@@ -169,7 +169,9 @@ def _to_vtk(mesh: NgsMesh,) -> pv.UnstructuredGrid:
 def interpolate_gene_data(
         mesh: NgsMesh,
         gene_data: GeneData | Iterable[GeneData],
-        pv_data: pv.UnstructuredGrid
+        pv_data: pv.UnstructuredGrid,
+        *,
+        smoothing_factor: float = 1.0
 ) -> None:
     """
     Interpolate gene expression data onto the mesh by solving a Poisson equation with the gene expression as the sources
@@ -177,6 +179,8 @@ def interpolate_gene_data(
     :param mesh: The mesh to interpolate the gene data onto
     :param gene_data: A :class:`GeneData` object containing the gene expression data
     :param pv_data: A :class:`pyvista.UnstructuredGrid` object where the interpolated data is stored as a scalar field
+    :param smoothing_factor: A measure between 0 and infinity of how much smoothing to apply to the interpolated data
+        (the inverse of the diffusion coefficient)
     """
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]
@@ -190,7 +194,7 @@ def interpolate_gene_data(
     solution = GridFunction(fes)
 
     a = BilinearForm(fes)
-    a += grad(u) * grad(v) * dx
+    a += (1 / smoothing_factor) * grad(u) * grad(v) * dx
     a += p * v * dx
     a += q * u * dx
     a.Assemble()
