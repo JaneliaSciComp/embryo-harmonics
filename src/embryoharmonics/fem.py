@@ -1,4 +1,3 @@
-from ctypes.wintypes import VARIANT_BOOL
 from typing import Tuple, Dict, Literal, Iterable
 
 import numpy as np
@@ -11,6 +10,7 @@ from netgen.meshing import Mesh as NetgenMesh
 from ngsolve import Mesh as NgsMesh
 from ngsolve import H1, grad, dx, BilinearForm, LinearForm, FESpace, GridFunction, Integrate, TaskManager
 
+from embryoharmonics.common import get_all_harmonic_names, get_harmonic_name, retain_harmonics
 from embryoharmonics.geometry import GeneData
 
 
@@ -95,13 +95,13 @@ def compute_harmonics(
         *,
         k: int = 10,
         boundary_condition: Literal['dirichlet', 'neumann'] = "neumann"
-) -> Tuple[pv.UnstructuredGrid, np.ndarray, sp.csr_matrix]:
+) -> Tuple[pv.UnstructuredGrid, np.ndarray]:
     """
     Compute the first n eigenvectors and eigenvalues of the Laplace operator on a given mesh.
     :param mesh: The mesh to compute the eigenfunctions on
     :param k: The number of eigenfunctions to compute
     :param boundary_condition: The boundary condition to apply (either 'dirichlet' or 'neumann')
-    :return: The eigenvectors (as pyvista data structure), eigenvalues, and mass matrix
+    :return: The eigenvectors (as pyvista data structure), and eigenvalues
     """
 
     # Set up lowest-order finite element problem for the Laplace operator
@@ -115,10 +115,6 @@ def compute_harmonics(
     m = BilinearForm(fes, symmetric=True)
     m += u * v * dx
     m.Assemble()
-
-    f = LinearForm(fes)
-    f += v * dx
-    f.Assemble()
 
     match boundary_condition:
         case 'dirichlet':
@@ -137,10 +133,9 @@ def compute_harmonics(
 
     pv_data = _to_vtk(mesh)
     for i in range(k):
-        pv_data[f"eigenfunction {i}"] = full_eigvecs[:, i]
-    pv_data["integration weights"] = f.vec.FV().NumPy()
+        pv_data[get_harmonic_name(i)] = full_eigvecs[:, i]
 
-    return pv_data, eigvals, mass
+    return pv_data, eigvals
 
 
 def _to_scipy_csr(blf, mask):
@@ -180,7 +175,7 @@ def interpolate_gene_data(
     :param gene_data: A :class:`GeneData` object containing the gene expression data
     :param pv_data: A :class:`pyvista.UnstructuredGrid` object where the interpolated data is stored as a scalar field
     :param smoothing_factor: A measure between 0 and infinity of how much smoothing to apply to the interpolated data
-        (the inverse of the diffusion coefficient)
+        (the diffusion coefficient)
     """
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]
@@ -204,12 +199,12 @@ def interpolate_gene_data(
 
         for data in gene_data:
             # Filter Nan values
-            non_nan_indices = np.where(np.logical_not(np.isnan(data.activity)))[0]
+            filtered_data = data.filter_nan_values()
 
             # Use gene expression data as point sources
             f = LinearForm(fes)
-            for i in non_nan_indices:
-                f += (data.activity[i] * v)(*data.location[i])
+            for i in range(len(filtered_data)):
+                f += (filtered_data.activity[i] * v)(*filtered_data.location[i])
 
             f.Assemble()
             solution = GridFunction(fes)
@@ -218,33 +213,44 @@ def interpolate_gene_data(
                 solution.vec.data += mstar_inverse * res
 
             # Add the interpolated data to the pyvista data object
-            pv_data[data.name] = solution.vec.FV().NumPy().copy()
+            pv_data[filtered_data.name] = solution.vec.FV().NumPy().copy()
 
 
 def compute_eigen_coefficients(
         pv_data: pv.UnstructuredGrid,
-        mass_matrix: sp.csr_matrix,
-        names: str | Iterable[str],
+        gene_data: GeneData | Iterable[GeneData],
 ) -> Dict[str, np.ndarray]:
     """
     Compute the coefficients of the given fields with respect to the eigenfunctions.
     :param pv_data: The mesh data to compute the coefficients for
-    :param mass_matrix: The mass matrix of the underlying mesh
-    :param names: The names of the fields to compute the coefficients for
+    :param gene_data: The gene data to compute the coefficients for
     :return: The coefficients of the fields with respect to the eigenfunctions
     """
-    if isinstance(names, str):
-        names = [names]
+    if not isinstance(gene_data, Iterable):
+        gene_data = [gene_data]
 
-    array_names = pv_data.array_names
-    n_eigenfunctions = sum("eigenfunction" in name for name in array_names)
-    integral_weights = pv_data["integration weights"]
-    eigenfunctions = np.array([pv_data[f"eigenfunction {i}"] for i in range(n_eigenfunctions)])
+    harmonic_names = get_all_harmonic_names(pv_data)
+    harmonics = np.array([pv_data[name] for name in harmonic_names])
     coefficients = {}
 
-    for name in names:
-        gene = pv_data[name]
-        for j in range(n_eigenfunctions):
-            coefficients[name] = np.dot(eigenfunctions, mass_matrix @ gene)
+    # Make a copy of the mesh data that stores only the harmonics (to avoid interpolating other fields)
+    only_harmonics = pv_data.copy(deep=True)
+    retain_harmonics(only_harmonics)
+
+    for data in gene_data:
+        # Filter Nan values and interpolate grid data onto the gene data locations
+        filtered_data = data.filter_nan_values()
+        points = pv.PolyData(filtered_data.location)
+        interpolated_data = points.sample(only_harmonics)
+
+        # Filter data that could not be interpolated (i.e., outside the mesh)
+        idx = interpolated_data["vtkValidPointMask"].astype(bool)
+        activities = filtered_data.activity[idx]
+        point_evaluations = [interpolated_data[name][idx] for name in harmonic_names]
+
+        if np.any(~idx):
+            print(f"WARNING: {np.sum(~idx)} points could not be interpolated for gene {filtered_data.name}")
+
+        coefficients[filtered_data.name] = np.array([np.dot(p, activities) for p in point_evaluations])
 
     return coefficients

@@ -1,5 +1,8 @@
 import pyvista as pv
 
+from embryoharmonics.common import get_harmonic_name
+
+
 def plot_eigenfunction(
         pv_data: pv.UnstructuredGrid,
         k: int,
@@ -12,7 +15,7 @@ def plot_eigenfunction(
     :param cmap: The colormap to use (default: 'turbo')
     :return: The plotter object
     """
-    scalar_name = f"eigenfunction {k}"
+    scalar_name = get_harmonic_name(k)
 
     camera = pv.Camera()
     camera.position = (-400.0, 400.0, -500.0)

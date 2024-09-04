@@ -39,6 +39,13 @@ class GeneData:
     location: np.ndarray
     activity: np.ndarray
 
+    def __len__(self) -> int:
+        return len(self.activity)
+
+    def filter_nan_values(self) -> "GeneData":
+        non_nan_indices = np.where(np.logical_not(np.isnan(self.activity)))[0]
+        return GeneData(self.name, self.location[non_nan_indices], self.activity[non_nan_indices])
+
 
 def load_gene_data(
         h5file: h5py.File,
