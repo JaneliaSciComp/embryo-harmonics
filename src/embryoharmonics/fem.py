@@ -1,4 +1,3 @@
-from ctypes.wintypes import VARIANT_BOOL
 from typing import Tuple, Dict, Literal, Iterable
 
 import numpy as np
@@ -116,10 +115,6 @@ def compute_harmonics(
     m += u * v * dx
     m.Assemble()
 
-    f = LinearForm(fes)
-    f += v * dx
-    f.Assemble()
-
     match boundary_condition:
         case 'dirichlet':
             mask = np.array([free for free in fes.FreeDofs()])
@@ -138,7 +133,6 @@ def compute_harmonics(
     pv_data = _to_vtk(mesh)
     for i in range(k):
         pv_data[f"eigenfunction {i}"] = full_eigvecs[:, i]
-    pv_data["integration weights"] = f.vec.FV().NumPy()
 
     return pv_data, eigvals, mass
 
@@ -238,7 +232,6 @@ def compute_eigen_coefficients(
 
     array_names = pv_data.array_names
     n_eigenfunctions = sum("eigenfunction" in name for name in array_names)
-    integral_weights = pv_data["integration weights"]
     eigenfunctions = np.array([pv_data[f"eigenfunction {i}"] for i in range(n_eigenfunctions)])
     coefficients = {}
 
