@@ -10,7 +10,7 @@ from netgen.meshing import Mesh as NetgenMesh
 from ngsolve import Mesh as NgsMesh
 from ngsolve import H1, grad, dx, BilinearForm, LinearForm, FESpace, GridFunction, Integrate, TaskManager
 
-from embryoharmonics.common import get_all_harmonic_names, get_harmonic_name
+from embryoharmonics.common import get_all_harmonic_names, get_harmonic_name, retain_harmonics
 from embryoharmonics.geometry import GeneData
 
 
@@ -95,13 +95,13 @@ def compute_harmonics(
         *,
         k: int = 10,
         boundary_condition: Literal['dirichlet', 'neumann'] = "neumann"
-) -> Tuple[pv.UnstructuredGrid, np.ndarray, sp.csr_matrix]:
+) -> Tuple[pv.UnstructuredGrid, np.ndarray]:
     """
     Compute the first n eigenvectors and eigenvalues of the Laplace operator on a given mesh.
     :param mesh: The mesh to compute the eigenfunctions on
     :param k: The number of eigenfunctions to compute
     :param boundary_condition: The boundary condition to apply (either 'dirichlet' or 'neumann')
-    :return: The eigenvectors (as pyvista data structure), eigenvalues, and mass matrix
+    :return: The eigenvectors (as pyvista data structure), and eigenvalues
     """
 
     # Set up lowest-order finite element problem for the Laplace operator
@@ -135,7 +135,7 @@ def compute_harmonics(
     for i in range(k):
         pv_data[get_harmonic_name(i)] = full_eigvecs[:, i]
 
-    return pv_data, eigvals, mass
+    return pv_data, eigvals
 
 
 def _to_scipy_csr(blf, mask):
@@ -213,31 +213,44 @@ def interpolate_gene_data(
                 solution.vec.data += mstar_inverse * res
 
             # Add the interpolated data to the pyvista data object
-            pv_data[data.name] = solution.vec.FV().NumPy().copy()
+            pv_data[filtered_data.name] = solution.vec.FV().NumPy().copy()
 
 
 def compute_eigen_coefficients(
         pv_data: pv.UnstructuredGrid,
-        mass_matrix: sp.csr_matrix,
-        names: str | Iterable[str],
+        gene_data: GeneData | Iterable[GeneData],
 ) -> Dict[str, np.ndarray]:
     """
     Compute the coefficients of the given fields with respect to the eigenfunctions.
     :param pv_data: The mesh data to compute the coefficients for
-    :param mass_matrix: The mass matrix of the underlying mesh
-    :param names: The names of the fields to compute the coefficients for
+    :param gene_data: The gene data to compute the coefficients for
     :return: The coefficients of the fields with respect to the eigenfunctions
     """
-    if isinstance(names, str):
-        names = [names]
+    if not isinstance(gene_data, Iterable):
+        gene_data = [gene_data]
 
     harmonic_names = get_all_harmonic_names(pv_data)
-    eigenfunctions = np.array([pv_data[name] for name in harmonic_names])
+    harmonics = np.array([pv_data[name] for name in harmonic_names])
     coefficients = {}
 
-    for name in names:
-        gene = pv_data[name]
-        for j in range(n_eigenfunctions):
-            coefficients[name] = np.dot(eigenfunctions, mass_matrix @ gene)
+    # Make a copy of the mesh data that stores only the harmonics (to avoid interpolating other fields)
+    only_harmonics = pv_data.copy(deep=True)
+    retain_harmonics(only_harmonics)
+
+    for data in gene_data:
+        # Filter Nan values and interpolate grid data onto the gene data locations
+        filtered_data = data.filter_nan_values()
+        points = pv.PolyData(filtered_data.location)
+        interpolated_data = points.sample(only_harmonics)
+
+        # Filter data that could not be interpolated (i.e., outside the mesh)
+        idx = interpolated_data["vtkValidPointMask"].astype(bool)
+        activities = filtered_data.activity[idx]
+        point_evaluations = [interpolated_data[name][idx] for name in harmonic_names]
+
+        if np.any(~idx):
+            print(f"WARNING: {np.sum(~idx)} points could not be interpolated for gene {filtered_data.name}")
+
+        coefficients[filtered_data.name] = np.array([np.dot(p, activities) for p in point_evaluations])
 
     return coefficients
