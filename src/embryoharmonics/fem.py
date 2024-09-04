@@ -10,6 +10,7 @@ from netgen.meshing import Mesh as NetgenMesh
 from ngsolve import Mesh as NgsMesh
 from ngsolve import H1, grad, dx, BilinearForm, LinearForm, FESpace, GridFunction, Integrate, TaskManager
 
+from embryoharmonics.common import get_all_harmonic_names, get_harmonic_name
 from embryoharmonics.geometry import GeneData
 
 
@@ -132,7 +133,7 @@ def compute_harmonics(
 
     pv_data = _to_vtk(mesh)
     for i in range(k):
-        pv_data[f"eigenfunction {i}"] = full_eigvecs[:, i]
+        pv_data[get_harmonic_name(i)] = full_eigvecs[:, i]
 
     return pv_data, eigvals, mass
 
@@ -230,9 +231,8 @@ def compute_eigen_coefficients(
     if isinstance(names, str):
         names = [names]
 
-    array_names = pv_data.array_names
-    n_eigenfunctions = sum("eigenfunction" in name for name in array_names)
-    eigenfunctions = np.array([pv_data[f"eigenfunction {i}"] for i in range(n_eigenfunctions)])
+    harmonic_names = get_all_harmonic_names(pv_data)
+    eigenfunctions = np.array([pv_data[name] for name in harmonic_names])
     coefficients = {}
 
     for name in names:
