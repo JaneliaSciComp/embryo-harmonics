@@ -175,7 +175,7 @@ def interpolate_gene_data(
     :param gene_data: A :class:`GeneData` object containing the gene expression data
     :param pv_data: A :class:`pyvista.UnstructuredGrid` object where the interpolated data is stored as a scalar field
     :param smoothing_factor: A measure between 0 and infinity of how much smoothing to apply to the interpolated data
-        (the inverse of the diffusion coefficient)
+        (the diffusion coefficient)
     """
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]
@@ -199,12 +199,12 @@ def interpolate_gene_data(
 
         for data in gene_data:
             # Filter Nan values
-            non_nan_indices = np.where(np.logical_not(np.isnan(data.activity)))[0]
+            filtered_data = data.filter_nan_values()
 
             # Use gene expression data as point sources
             f = LinearForm(fes)
-            for i in non_nan_indices:
-                f += (data.activity[i] * v)(*data.location[i])
+            for i in range(len(filtered_data)):
+                f += (filtered_data.activity[i] * v)(*filtered_data.location[i])
 
             f.Assemble()
             solution = GridFunction(fes)
