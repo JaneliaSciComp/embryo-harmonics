@@ -4,7 +4,7 @@ import numpy as np
 import pyvista as pv
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
-from ngsolve import H1, grad, dx, BilinearForm
+from ngsolve import H1, grad, dx, BilinearForm, GridFunction, x, y, Integrate
 from ngsolve import Mesh as NgsMesh
 
 from embryoharmonics.gene_data import GeneData
@@ -15,13 +15,14 @@ def compute_harmonics(
         *,
         k: int = 10,
         boundary_condition: Literal['dirichlet', 'neumann'] = "neumann"
-) -> Tuple[pv.UnstructuredGrid, np.ndarray]:
+) -> Tuple[pv.UnstructuredGrid, Dict[str, np.ndarray]]:
     """
-    Compute the first n eigenvectors and eigenvalues of the Laplace operator on a given mesh.
+    Compute the first k harmonics and some key metrics of the Laplace operator on a given mesh.
     :param mesh: The mesh to compute the eigenfunctions on
     :param k: The number of eigenfunctions to compute
     :param boundary_condition: The boundary condition to apply (either 'dirichlet' or 'neumann')
-    :return: The eigenvectors (as pyvista data structure), and eigenvalues
+    :return: The harmonics (as pyvista data structure), and a dictionary containing eigenvalues and the dirichlet
+    energy in radial, angular, and z direction as numpy arrays
     """
 
     # Set up lowest-order finite element problem for the Laplace operator
@@ -48,6 +49,9 @@ def compute_harmonics(
     mass = _to_scipy_csr(m, mask)
     eigvals, eigvecs = spla.eigsh(A=stiffness, M=mass, k=k, which='LM', sigma=0.0)
 
+    r, phi, z = _compute_cylindrical_dirichlet_energy(fes, eigvecs)
+    metrics = dict(eigenvalues=eigvals, dirichlet_r=r, dirichlet_phi=phi, dirichlet_z=z)
+
     full_eigvecs = np.zeros((fes.ndof, k))
     full_eigvecs[mask, :] = eigvecs
 
@@ -55,7 +59,26 @@ def compute_harmonics(
     for i in range(k):
         pv_data[_harmonic_name(i)] = full_eigvecs[:, i]
 
-    return pv_data, eigvals
+    return pv_data, metrics
+
+
+def _compute_cylindrical_dirichlet_energy(fes, eigvecs):
+    u = GridFunction(fes)
+    n = eigvecs.shape[1]
+    dr = np.zeros((n,), dtype=np.float64)
+    dphi = np.zeros((n,), dtype=np.float64)
+    dz = np.zeros((n,), dtype=np.float64)
+    r_squared = x ** 2 + y ** 2
+
+    for i in range(n):
+        u.vec.FV().NumPy()[:] = eigvecs[:, i]
+        du = grad(u)
+
+        dr[i] = Integrate((x * du[0] + y * du[1]) ** 2 / r_squared, fes.mesh)
+        dphi[i] = Integrate((-y * du[0] + x * du[1]) ** 2 / r_squared, fes.mesh)
+        dz[i] = Integrate(du[2] ** 2, fes.mesh)
+
+    return dr, dphi, dz
 
 
 def compute_eigen_coefficients(

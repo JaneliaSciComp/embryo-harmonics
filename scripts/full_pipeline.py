@@ -34,7 +34,15 @@ print(f"Number of elements: {mesh.ne}")
 # %%
 # Compute first few eigenvectors
 k = 30
-pv_data, eigvals = compute_harmonics(mesh, k=k, boundary_condition="neumann")
+pv_data, metrics = compute_harmonics(mesh, k=k, boundary_condition="neumann")
+
+# %%
+# Find type of eigenfunctions (Note: this is not the most robust criterion)
+dirichlet_rpz = np.row_stack((metrics['dirichlet_r'], metrics['dirichlet_phi'], metrics['dirichlet_z']))
+max_dirichlet = np.argmax(dirichlet_rpz, axis=0)
+harmonic_type = ['radial', 'angular', 'height']
+for i, idx in enumerate(max_dirichlet):
+    print(f"harmonic {i:02d}: {harmonic_type[idx]}")
 
 # %%
 # Visualize eigenvector
