@@ -7,11 +7,29 @@ from netgen.meshing import FaceDescriptor, Element2D
 from netgen.meshing import Mesh as NetgenMesh
 from ngsolve import Mesh as NgsMesh
 
+from embryoharmonics.geometry import EmbryoModel, _get_spline_surface
 
-def mesh_embryo_geometry(
+
+def generate_embryo_mesh(
+        embryo_model: EmbryoModel,
+        n_interpolation: int = 32,
+        mesh_size: float = 5.0
+) -> NgsMesh:
+    """
+    Generate a volume mesh for the given embryo model.
+    :param embryo_model: The embryo model to mesh
+    :param n_interpolation: The number of points to use for the interpolation
+    :param mesh_size: The maximum mesh size
+    :return: The volume mesh of the embryo model
+    """
+    worm_geometry = _assemble_embryo_geometry(embryo_model, n_interpolation)
+    return _mesh_embryo_geometry(worm_geometry, mesh_size)
+
+
+def _mesh_embryo_geometry(
         worm_geometry: occ.Compound,
         mesh_size: float
-) -> NetgenMesh:
+) -> NgsMesh:
     """
     Mesh the geometry of an embryo.
     :param worm_geometry: The geometry of the embryo to mesh
@@ -22,6 +40,32 @@ def mesh_embryo_geometry(
     surface_mesh = geo.GenerateMesh(maxh=mesh_size)
     vol_mesh, _ = _convert_to_volume_mesh(surface_mesh, mesh_size, mesh_size / 10)
     return NgsMesh(vol_mesh)
+
+
+def _assemble_embryo_geometry(
+        embryo_model: EmbryoModel,
+        n_interpolation: int
+) -> occ.Compound:
+    """
+    Assemble the geometry of the embryo from the given embryo model.
+    :param embryo_model: The embryo model
+    :param n_interpolation: The number of points to use for the interpolation
+    :return: The NGSolve-OCC geometry representing the embryo
+    """
+
+    # Generate the mantle of the worm
+    n_splines = embryo_model.n_transverse_splines
+    spline_surfaces = [_get_spline_surface(embryo_model, n_interpolation, i) for i in range(n_splines)]
+    mantle = occ.Compound(spline_surfaces)
+
+    # Generate the caps on the anterior and posterior end
+    min_z_threshold = embryo_model.central_spline(0.0)[2] + 1
+    max_z_threshold = embryo_model.central_spline(1.0)[2] - 1
+    posterior_cap = occ.Face(occ.Wire([e.Reversed() for e in mantle.edges[occ.Z < min_z_threshold]]))
+    anterior_cap = occ.Face(occ.Wire([e.Reversed() for e in mantle.edges[occ.Z > max_z_threshold]]))
+
+    total_surface = occ.Compound([mantle, anterior_cap, posterior_cap])
+    return total_surface
 
 
 def _convert_to_volume_mesh(

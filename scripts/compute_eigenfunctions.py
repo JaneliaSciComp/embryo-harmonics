@@ -11,6 +11,7 @@
 #     language: python
 #     name: python3
 # ---
+from tokenize import generate_tokens
 
 # %%
 import h5py
@@ -18,8 +19,7 @@ import numpy as np
 from ngsolve import H1, dx, grad, BilinearForm, GridFunction
 from ngsolve.webgui import Draw
 
-from embryoharmonics.geometry import load_avg_models, assemble_embryo_geometry
-from embryoharmonics.meshing import mesh_embryo_geometry
+from embryoharmonics import load_avg_models, generate_embryo_mesh
 
 # %%
 path = "/home/innerbergerm@hhmi.org/big-data/worm-geometry/celegans_avg_models_2024_04_23.h5"
@@ -28,8 +28,7 @@ h5file = h5py.File(path, 'r')
 # %%
 time_step = 1
 embryo_model = load_avg_models(h5file, time_steps=[time_step])[time_step]
-geometry = assemble_embryo_geometry(embryo_model)
-mesh = mesh_embryo_geometry(geometry, mesh_size=5)
+mesh = generate_embryo_mesh(embryo_model, mesh_size=5)
 print(f"Number of elements: {mesh.ne}")
 
 # %%

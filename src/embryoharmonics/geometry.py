@@ -29,7 +29,7 @@ class EmbryoModel:
         return len(self.transverse_splines)
 
 
-def assemble_embryo_geometry(
+def _assemble_embryo_geometry(
         embryo_model: EmbryoModel,
         n_interpolation: int = 32
 ) -> occ.Compound:

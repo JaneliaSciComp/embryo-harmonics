@@ -28,8 +28,7 @@ pv.set_jupyter_backend('client')
 # %%
 time_step = 1
 embryo_model = load_avg_models(h5file, time_steps=[time_step])[time_step]
-geometry = assemble_embryo_geometry(embryo_model)
-mesh = mesh_embryo_geometry(geometry, mesh_size=5)
+mesh = generate_embryo_mesh(embryo_model, mesh_size=5)
 print(f"Number of elements: {mesh.ne}")
 
 # %%
@@ -69,7 +68,7 @@ plotter.add_mesh(slices, scalars="cwn", cmap="turbo")
 plotter.show()
 
 # %%
-# With this smooth interpolation, it's possible to compute the eigen-coefficients of the gene expression
+# With this the gene data loaded, it's possible to compute the eigen-coefficients of the gene expression
 eigen_coefficients = compute_eigen_coefficients(pv_data, gene_data)
 plt.scatter(range(k), np.abs(eigen_coefficients["cwn"]))
 # plt.gca().set_yscale('log')
