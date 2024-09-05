@@ -15,11 +15,11 @@
 # %%
 import h5py
 import numpy as np
-from ngsolve import *
+from ngsolve import H1, dx, grad, BilinearForm, GridFunction
 from ngsolve.webgui import Draw
 
 from embryoharmonics.geometry import load_avg_models, assemble_embryo_geometry
-from embryoharmonics.fem import mesh_embryo_geometry
+from embryoharmonics.meshing import mesh_embryo_geometry
 
 # %%
 path = "/home/innerbergerm@hhmi.org/big-data/worm-geometry/celegans_avg_models_2024_04_23.h5"

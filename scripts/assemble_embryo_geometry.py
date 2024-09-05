@@ -4,7 +4,7 @@ import netgen.occ as occ
 from netgen.webgui import Draw
 
 from embryoharmonics.geometry import load_avg_models, _get_spline_surface
-from embryoharmonics.fem import _convert_to_volume_mesh
+from embryoharmonics.meshing import _convert_to_volume_mesh
 
 # %%
 path = "/home/innerbergerm@hhmi.org/big-data/worm-geometry/celegans_avg_models_2024_04_23.h5"

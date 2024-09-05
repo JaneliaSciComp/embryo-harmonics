@@ -1,6 +1,5 @@
 import math
-from dataclasses import dataclass
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Iterable
 
 import h5py
 import numpy as np
@@ -30,55 +29,30 @@ class EmbryoModel:
         return len(self.transverse_splines)
 
 
-@dataclass
-class GeneData:
+def assemble_embryo_geometry(
+        embryo_model: EmbryoModel,
+        n_interpolation: int = 32
+) -> occ.Compound:
     """
-    Data class representing the expression data for a gene at a single point in time.
+    Assemble the geometry of the embryo from the given embryo model.
+    :param embryo_model: The embryo model
+    :param n_interpolation: The number of points to use for the interpolation
+    :return: The NGSolve-OCC geometry representing the embryo
     """
-    name: str
-    location: np.ndarray
-    activity: np.ndarray
 
-    def __len__(self) -> int:
-        return len(self.activity)
+    # Generate the mantle of the worm
+    n_splines = embryo_model.n_transverse_splines
+    spline_surfaces = [_get_spline_surface(embryo_model, n_interpolation, i) for i in range(n_splines)]
+    mantle = occ.Compound(spline_surfaces)
 
-    def filter_nan_values(self) -> "GeneData":
-        non_nan_indices = np.where(np.logical_not(np.isnan(self.activity)))[0]
-        return GeneData(self.name, self.location[non_nan_indices], self.activity[non_nan_indices])
+    # Generate the caps on the anterior and posterior end
+    min_z_threshold = embryo_model.central_spline(0.0)[2] + 1
+    max_z_threshold = embryo_model.central_spline(1.0)[2] - 1
+    posterior_cap = occ.Face(occ.Wire([e.Reversed() for e in mantle.edges[occ.Z < min_z_threshold]]))
+    anterior_cap = occ.Face(occ.Wire([e.Reversed() for e in mantle.edges[occ.Z > max_z_threshold]]))
 
-
-def load_gene_data(
-        h5file: h5py.File,
-        gene_name: str,
-        *,
-        time_steps: Iterable[int] = None
-) -> Tuple[Dict[int, GeneData], np.ndarray]:
-    """
-    Load the gene expression data from the given file.
-    :param h5file: The name of the HDF5 file containing the gene expression data
-    :param gene_name: The name of the gene to load
-    :param time_steps: Which time steps to load (if None, all time steps are loaded; 1-based)
-    :return: A dictionary of time_step to :class:`GeneData` objects containing the gene expression data and the time
-    """
-    # TODO: find out what the data format is and make more general
-    print("WARNING: Due to unspecified data format, this function most likely cannot deal with general data.")
-
-    time = h5file[f"{gene_name}_time"][0]
-    if time_steps is None:
-        # there is one extra group (measurements)
-        time_steps = range(len(time))
-
-    gene_act = h5file[f"{gene_name}_gene_act"]
-    pos = h5file[f"{gene_name}_xyz"]
-
-    gene_data = {}
-    time_slice = []
-    for time_step in time_steps:
-        i = time_step - 1
-        gene_data[time_step] = GeneData(gene_name, pos[i], gene_act[i])
-        time_slice.append(time[i])
-
-    return gene_data, np.array(time_slice)
+    total_surface = occ.Compound([mantle, anterior_cap, posterior_cap])
+    return total_surface
 
 
 def load_measurement(
@@ -94,10 +68,27 @@ def load_measurement(
     return length, volume
 
 
-def _convert_to_ndarray(
-        data: h5py.Dataset
-) -> np.ndarray:
-    return np.array([item for tup in data for item in tup[0]]).reshape(-1, 3)
+def load_avg_models(
+       h5file: h5py.File,
+        *,
+        time_steps: Iterable[int] = None
+) -> Dict[int, EmbryoModel]:
+    """
+    Load all averaged models from the given HDF5 file.
+    :param h5file: The HDF5 file containing spline data for the averaged models
+    :param time_steps: Which time steps to load (if None, all time steps are loaded; 1-based)
+    :return: A dictionary mapping time steps to the corresponding models
+    """
+    if time_steps is None:
+        # there is one extra group (measurements)
+        time_steps = range(1, len(h5file.keys()))
+
+    models = {}
+    for time_step in time_steps:
+        model = h5file[f"avg_model_{time_step:03d}"]
+        models[time_step] = _load_single_model(model)
+
+    return models
 
 
 def _load_single_model(
@@ -124,27 +115,10 @@ def _load_single_model(
     return EmbryoModel(names, spline_domain, central_coordinates, transverse_coordinates)
 
 
-def load_avg_models(
-       h5file: h5py.File,
-        *,
-        time_steps: Iterable[int] = None
-) -> Dict[int, EmbryoModel]:
-    """
-    Load all averaged models from the given HDF5 file.
-    :param h5file: The HDF5 file containing spline data for the averaged models
-    :param time_steps: Which time steps to load (if None, all time steps are loaded; 1-based)
-    :return: A dictionary mapping time steps to the corresponding models
-    """
-    if time_steps is None:
-        # there is one extra group (measurements)
-        time_steps = range(1, len(h5file.keys()))
-
-    models = {}
-    for time_step in time_steps:
-        model = h5file[f"avg_model_{time_step:03d}"]
-        models[time_step] = _load_single_model(model)
-
-    return models
+def _convert_to_ndarray(
+        data: h5py.Dataset
+) -> np.ndarray:
+    return np.array([item for tup in data for item in tup[0]]).reshape(-1, 3)
 
 
 def _rotate_around_z_and_x(
@@ -206,29 +180,3 @@ def _get_spline_surface(
     surf = surf.Rotate(occ.Axis(occ.Pnt(0, 0, 0), occ.X), 90)
     surf = surf.Rotate(occ.Axis(occ.Pnt(0, 0, 0), occ.Z), -angle)
     return surf
-
-
-def assemble_embryo_geometry(
-        embryo_model: EmbryoModel,
-        n_interpolation: int = 32
-) -> occ.Compound:
-    """
-    Assemble the geometry of the embryo from the given embryo model.
-    :param embryo_model: The embryo model
-    :param n_interpolation: The number of points to use for the interpolation
-    :return: The NGSolve-OCC geometry representing the embryo
-    """
-
-    # Generate the mantle of the worm
-    n_splines = embryo_model.n_transverse_splines
-    spline_surfaces = [_get_spline_surface(embryo_model, n_interpolation, i) for i in range(n_splines)]
-    mantle = occ.Compound(spline_surfaces)
-
-    # Generate the caps on the anterior and posterior end
-    min_z_threshold = embryo_model.central_spline(0.0)[2] + 1
-    max_z_threshold = embryo_model.central_spline(1.0)[2] - 1
-    posterior_cap = occ.Face(occ.Wire([e.Reversed() for e in mantle.edges[occ.Z < min_z_threshold]]))
-    anterior_cap = occ.Face(occ.Wire([e.Reversed() for e in mantle.edges[occ.Z > max_z_threshold]]))
-
-    total_surface = occ.Compound([mantle, anterior_cap, posterior_cap])
-    return total_surface

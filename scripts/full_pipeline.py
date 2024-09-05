@@ -18,9 +18,7 @@ import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
 
-from embryoharmonics.geometry import load_avg_models, assemble_embryo_geometry, load_gene_data
-from embryoharmonics.fem import mesh_embryo_geometry, compute_harmonics, interpolate_gene_data, compute_eigen_coefficients
-from embryoharmonics.visualization import plot_eigenfunction
+from embryoharmonics import *
 
 # %%
 path = "/home/innerbergerm@hhmi.org/big-data/worm-geometry/celegans_avg_models_2024_04_23.h5"
@@ -57,6 +55,7 @@ gene_data, time = load_gene_data(mat_file, "cwn", time_steps=[time_step])
 gene_data = gene_data[time_step]
 
 # TODO: there is a mismatch between the scales of the geometry and the gene data (about a factor of 5) - fix this in a general way!
+# If the factor is chosen too large, some points are outside the domain and the kernel will crash
 gene_data.location *= 5
 
 interpolate_gene_data(mesh, gene_data, pv_data, smoothing_factor=1000)
