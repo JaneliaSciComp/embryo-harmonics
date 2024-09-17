@@ -66,7 +66,7 @@ gene_data = gene_data_loader.load("cwn-1", time_step)
 # If the factor is chosen too large, some points are outside the domain
 gene_data.locations *= 5
 
-interpolate_gene_data(mesh, gene_data, pv_data, smoothing_factor=1000)
+interpolate_gene_data(mesh, gene_data, pv_data, smoothness=10)
 print(pv_data.array_names)
 
 # %%

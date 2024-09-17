@@ -94,7 +94,7 @@ def interpolate_gene_data(
         gene_data: GeneData | Iterable[GeneData],
         pv_data: pv.UnstructuredGrid,
         *,
-        smoothing_factor: float = 1.0
+        smoothness: float = 1.0
 ) -> None:
     """
     Interpolate gene expression data onto the mesh by solving a Poisson equation with the gene expression as the sources
@@ -102,8 +102,8 @@ def interpolate_gene_data(
     :param mesh: The mesh to interpolate the gene data onto
     :param gene_data: A :class:`GeneData` object containing the gene expression data
     :param pv_data: A :class:`pyvista.UnstructuredGrid` object where the interpolated data is stored as a scalar field
-    :param smoothing_factor: A measure between 0 and infinity of how much smoothing to apply to the interpolated data
-        (the diffusion coefficient)
+    :param smoothness: A measure between 0 and infinity of how smooth the interpolated data should be (roughly the
+        radius of the smoothing kernel)
     """
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]
@@ -114,8 +114,9 @@ def interpolate_gene_data(
     fes = H1(mesh, order=1)
     u, v = fes.TnT()
 
+    D = smoothness ** 2
     a = BilinearForm(fes)
-    a += smoothing_factor * grad(u) * grad(v) * dx
+    a += D * grad(u) * grad(v) * dx
     m = BilinearForm(fes)
     m += u * v * dx
 
@@ -140,9 +141,10 @@ def interpolate_gene_data(
 
             f.Assemble()
             solution = GridFunction(fes)
+            res = dt * f.vec
             for _ in range(n_time_steps):
-                res = dt * (f.vec - a.mat * solution.vec)
                 solution.vec.data += mstar_inverse * res
+                res = -dt * (a.mat * solution.vec)
 
             # Add the interpolated data to the pyvista data object
             pv_data[filtered_data.name] = solution.vec.FV().NumPy().copy()
