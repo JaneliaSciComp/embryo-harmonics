@@ -104,12 +104,12 @@ def compute_eigen_coefficients(
     for data in gene_data:
         # Filter Nan values and interpolate grid data onto the gene data locations
         filtered_data = data.filter_nan_values()
-        points = pv.PolyData(filtered_data.location)
+        points = pv.PolyData(filtered_data.locations)
         interpolated_data = points.sample(only_harmonics)
 
         # Filter data that could not be interpolated (i.e., outside the mesh)
         is_in_mesh = interpolated_data["vtkValidPointMask"].astype(bool)
-        activities = filtered_data.activity[is_in_mesh]
+        activities = filtered_data.activities[is_in_mesh]
         point_evaluations = [interpolated_data[name][is_in_mesh] for name in harmonic_names]
 
         if not np.all(is_in_mesh):

@@ -14,15 +14,15 @@ class GeneData:
     Data class representing the expression data for a gene at a single point in time.
     """
     name: str
-    location: np.ndarray
-    activity: np.ndarray
+    locations: np.ndarray
+    activities: np.ndarray
 
     def __len__(self) -> int:
-        return len(self.activity)
+        return len(self.activities)
 
     def filter_nan_values(self) -> "GeneData":
-        non_nan_indices = np.where(np.logical_not(np.isnan(self.activity)))[0]
-        return GeneData(self.name, self.location[non_nan_indices], self.activity[non_nan_indices])
+        non_nan_indices = np.where(np.logical_not(np.isnan(self.activities)))[0]
+        return GeneData(self.name, self.locations[non_nan_indices], self.activities[non_nan_indices])
 
 
 def load_gene_data(
@@ -98,7 +98,7 @@ def interpolate_gene_data(
         for data in gene_data:
             # Filter Nan values
             filtered_data = data.filter_nan_values()
-            is_in_mesh = np.array([mesh.Contains(*p) for p in filtered_data.location])
+            is_in_mesh = np.array([mesh.Contains(*p) for p in filtered_data.locations])
             if not np.all(is_in_mesh):
                 print(f"WARNING: {np.sum(~is_in_mesh)} out of {len(is_in_mesh)} locations are outside the mesh and could not be interpolated for gene {filtered_data.name}")
 
@@ -106,7 +106,7 @@ def interpolate_gene_data(
             f = LinearForm(fes)
             for i in range(len(filtered_data)):
                 if is_in_mesh[i]:
-                    f += (filtered_data.activity[i] * v)(*filtered_data.location[i])
+                    f += (filtered_data.activities[i] * v)(*filtered_data.locations[i])
 
             f.Assemble()
             solution = GridFunction(fes)

@@ -63,7 +63,7 @@ gene_data = gene_data[time_step]
 
 # TODO: there is a mismatch between the scales of the geometry and the gene data (about a factor of 5) - fix this in a general way!
 # If the factor is chosen too large, some points are outside the domain and the kernel will crash
-gene_data.location *= 5
+gene_data.locations *= 5
 
 interpolate_gene_data(mesh, gene_data, pv_data, smoothing_factor=1000)
 print(pv_data.array_names)
