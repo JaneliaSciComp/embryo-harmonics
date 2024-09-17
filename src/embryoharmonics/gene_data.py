@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterable, Tuple, Dict
+from typing import Iterable, List
 
 import h5py
 import numpy as np
@@ -31,8 +31,8 @@ class GeneDataLoader:
     """
     def __init__(self, h5file: h5py.File):
         """
-        Initialize the gene data loader with the given HDF5 file.
-        :param h5file: The name of the HDF5 file containing the gene expression data
+        Initialize the gene data loader.
+        :param h5file: The HDF5 file containing the gene expression data
         """
         self.h5file = h5file
 
@@ -50,20 +50,20 @@ class GeneDataLoader:
         self._locations = data["XYZ"]
 
     @property
-    def gene_names(self) -> Iterable[str]:
+    def gene_names(self) -> List[str]:
         """
         Get the names of all genes in the HDF5 file.
         :return: The names of all genes
         """
-        return self._name_to_index.keys()
+        return list(self._name_to_index.keys())
 
     @property
-    def time_steps(self) -> Iterable[int]:
+    def time_steps(self) -> List[int]:
         """
         Get the time steps in the HDF5 file.
         :return: The time steps in the HDF5 file
         """
-        return self._time_to_index.keys()
+        return list(self._time_to_index.keys())
 
     def load(
             self,

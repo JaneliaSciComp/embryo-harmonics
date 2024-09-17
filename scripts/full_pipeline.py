@@ -26,8 +26,9 @@ h5file = h5py.File(path, 'r')
 pv.set_jupyter_backend('client')
 
 # %%
-time_step = 1
-embryo_model = load_avg_models(h5file, time_steps=[time_step])[time_step]
+time_step = 420
+embryo_model_loader = EmbryoModelLoader(h5file)
+embryo_model = embryo_model_loader.load(time_step)
 mesh = generate_embryo_mesh(embryo_model, mesh_size=5)
 print(f"Number of elements: {mesh.ne}")
 
@@ -57,7 +58,6 @@ for i in range(k):
 
 # %%
 # Gene data can be loaded and smoothly interpolated
-time_step = 420
 mat_file = h5py.File("/home/innerbergerm@hhmi.org/big-data/worm-geometry/4D_transcriptome.mat")
 gene_data_loader = GeneDataLoader(mat_file)
 gene_data = gene_data_loader.load("cwn-1", time_step)
