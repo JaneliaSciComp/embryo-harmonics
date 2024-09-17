@@ -57,12 +57,13 @@ for i in range(k):
 
 # %%
 # Gene data can be loaded and smoothly interpolated
-mat_file = h5py.File("/home/innerbergerm@hhmi.org/big-data/worm-geometry/cwn_pos_data.mat")
-gene_data, time = load_gene_data(mat_file, "cwn", time_steps=[time_step])
-gene_data = gene_data[time_step]
+time_step = 420
+mat_file = h5py.File("/home/innerbergerm@hhmi.org/big-data/worm-geometry/4D_transcriptome.mat")
+gene_data_loader = GeneDataLoader(mat_file)
+gene_data = gene_data_loader.load("cwn-1", time_step)
 
 # TODO: there is a mismatch between the scales of the geometry and the gene data (about a factor of 5) - fix this in a general way!
-# If the factor is chosen too large, some points are outside the domain and the kernel will crash
+# If the factor is chosen too large, some points are outside the domain
 gene_data.locations *= 5
 
 interpolate_gene_data(mesh, gene_data, pv_data, smoothing_factor=1000)
@@ -72,13 +73,13 @@ print(pv_data.array_names)
 # The gene expression data was added to the pyvista data object
 plotter = pv.Plotter()
 slices = pv_data.slice_orthogonal()
-plotter.add_mesh(slices, scalars="cwn", cmap="turbo")
+plotter.add_mesh(slices, scalars="cwn-1", cmap="turbo")
 plotter.show()
 
 # %%
 # With this the gene data loaded, it's possible to compute the eigen-coefficients of the gene expression
 eigen_coefficients = compute_eigen_coefficients(pv_data, gene_data)
-plt.scatter(range(k), np.abs(eigen_coefficients["cwn"]))
+plt.scatter(range(k), np.abs(eigen_coefficients["cwn-1"]))
 # plt.gca().set_yscale('log')
 plt.xlabel("# harmonic")
 plt.ylabel("coefficient")

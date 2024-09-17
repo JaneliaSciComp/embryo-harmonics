@@ -25,38 +25,68 @@ class GeneData:
         return GeneData(self.name, self.locations[non_nan_indices], self.activities[non_nan_indices])
 
 
-def load_gene_data(
-        h5file: h5py.File,
-        gene_name: str,
-        *,
-        time_steps: Iterable[int] = None
-) -> Tuple[Dict[int, GeneData], np.ndarray]:
+class GeneDataLoader:
     """
-    Load the gene expression data from the given file.
-    :param h5file: The name of the HDF5 file containing the gene expression data
-    :param gene_name: The name of the gene to load
-    :param time_steps: Which time steps to load (if None, all time steps are loaded; 1-based)
-    :return: A dictionary of time_step to :class:`GeneData` objects containing the gene expression data and the time
+    Class for loading gene expression data from an HDF5 file.
     """
-    # TODO: find out what the data format is and make more general
-    print("WARNING: Due to unspecified data format, this function most likely cannot deal with general data.")
+    def __init__(self, h5file: h5py.File):
+        """
+        Initialize the gene data loader with the given HDF5 file.
+        :param h5file: The name of the HDF5 file containing the gene expression data
+        """
+        self.h5file = h5file
 
-    time = h5file[f"{gene_name}_time"][0]
-    if time_steps is None:
-        # there is one extra group (measurements)
-        time_steps = range(len(time))
+        # Load all gene names
+        data = h5file["geneact"]
+        names = data["genes"][:].T
+        self._name_to_index = {names[i].astype(np.uint8).tobytes().decode('ascii').strip(): i for i in range(len(names))}
 
-    gene_act = h5file[f"{gene_name}_gene_act"]
-    pos = h5file[f"{gene_name}_xyz"]
+        # Load all time steps
+        time = data["timepoints"][0]
+        self._time_to_index = {time[i]: i for i in range(len(time))}
 
-    gene_data = {}
-    time_slice = []
-    for time_step in time_steps:
-        i = time_step - 1
-        gene_data[time_step] = GeneData(gene_name, pos[i], gene_act[i])
-        time_slice.append(time[i])
+        # Store handles to the gene expression data
+        self._gene_activities = data["data"]
+        self._locations = data["XYZ"]
 
-    return gene_data, np.array(time_slice)
+    @property
+    def gene_names(self) -> Iterable[str]:
+        """
+        Get the names of all genes in the HDF5 file.
+        :return: The names of all genes
+        """
+        return self._name_to_index.keys()
+
+    @property
+    def time_steps(self) -> Iterable[int]:
+        """
+        Get the time steps in the HDF5 file.
+        :return: The time steps in the HDF5 file
+        """
+        return self._time_to_index.keys()
+
+    def load(
+            self,
+            gene_name: str,
+            time_step: int
+    ) -> GeneData:
+        """
+        Load the gene expression data for the given gene.
+        :param gene_name: The name of the gene to load
+        :param time_step: Which time step to load
+        :return: A :class:`GeneData` object containing the gene expression data
+        """
+        try:
+            i = self._time_to_index[time_step]
+        except KeyError as e:
+            raise ValueError(f"Time step {time_step} not found in the HDF5 file") from e
+
+        try:
+            gene_index = self._name_to_index[gene_name]
+        except KeyError as e:
+            raise ValueError(f"Gene {gene_name} not found in the HDF5 file") from e
+
+        return GeneData(gene_name, self._locations[i, :, :], self._gene_activities[i, gene_index, :])
 
 
 def interpolate_gene_data(
