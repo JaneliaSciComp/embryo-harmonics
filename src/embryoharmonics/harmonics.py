@@ -108,12 +108,12 @@ def compute_eigen_coefficients(
         interpolated_data = points.sample(only_harmonics)
 
         # Filter data that could not be interpolated (i.e., outside the mesh)
-        idx = interpolated_data["vtkValidPointMask"].astype(bool)
-        activities = filtered_data.activity[idx]
-        point_evaluations = [interpolated_data[name][idx] for name in harmonic_names]
+        is_in_mesh = interpolated_data["vtkValidPointMask"].astype(bool)
+        activities = filtered_data.activity[is_in_mesh]
+        point_evaluations = [interpolated_data[name][is_in_mesh] for name in harmonic_names]
 
-        if np.any(~idx):
-            print(f"WARNING: {np.sum(~idx)} points could not be interpolated for gene {filtered_data.name}")
+        if not np.all(is_in_mesh):
+            print(f"WARNING: {np.sum(~is_in_mesh)} out of {len(is_in_mesh)} locations are outside the mesh and could not be interpolated for gene {filtered_data.name}")
 
         coefficients[filtered_data.name] = np.array([np.dot(p, activities) for p in point_evaluations])
 

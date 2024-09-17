@@ -98,11 +98,15 @@ def interpolate_gene_data(
         for data in gene_data:
             # Filter Nan values
             filtered_data = data.filter_nan_values()
+            is_in_mesh = np.array([mesh.Contains(*p) for p in filtered_data.location])
+            if not np.all(is_in_mesh):
+                print(f"WARNING: {np.sum(~is_in_mesh)} out of {len(is_in_mesh)} locations are outside the mesh and could not be interpolated for gene {filtered_data.name}")
 
             # Use gene expression data as point sources
             f = LinearForm(fes)
             for i in range(len(filtered_data)):
-                f += (filtered_data.activity[i] * v)(*filtered_data.location[i])
+                if is_in_mesh[i]:
+                    f += (filtered_data.activity[i] * v)(*filtered_data.location[i])
 
             f.Assemble()
             solution = GridFunction(fes)
