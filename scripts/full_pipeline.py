@@ -66,7 +66,7 @@ gene_data = gene_data_loader.load("cwn-1", time_step)
 # If the factor is chosen too large, some points are outside the domain
 gene_data.locations *= 5
 
-interpolate_gene_data(mesh, gene_data, pv_data, smoothness=10)
+smoothed_coefficients = interpolate_gene_data(mesh, gene_data, pv_data, smoothness=10, compute_eigen_coefficients=True)
 print(pv_data.array_names)
 
 # %%
@@ -77,12 +77,20 @@ plotter.add_mesh(slices, scalars="cwn-1", cmap="turbo")
 plotter.show()
 
 # %%
-# With this the gene data loaded, it's possible to compute the eigen-coefficients of the gene expression
-eigen_coefficients = compute_eigen_coefficients(pv_data, gene_data)
-plt.scatter(range(k), np.abs(eigen_coefficients["cwn-1"]))
+# If computed during smoothing, the eigen-coefficients of the smoothed gene expression can be plotted
+plt.scatter(range(k), np.abs(smoothed_coefficients["cwn-1"]))
 # plt.gca().set_yscale('log')
+plt.title("Eigen coefficients of smoothed cwn-1")
 plt.xlabel("# harmonic")
 plt.ylabel("coefficient")
 plt.show()
 
+# %%
+# Also, it's possible to compute the eigen-coefficients of the gene expression directly without smoothing
+eigen_coefficients = compute_eigen_coefficients(pv_data, gene_data)
+plt.scatter(range(k), np.abs(eigen_coefficients["cwn-1"]))
+plt.title("Eigen coefficients of cwn-1")
+plt.xlabel("# harmonic")
+plt.ylabel("coefficient")
+plt.show()
 # %%

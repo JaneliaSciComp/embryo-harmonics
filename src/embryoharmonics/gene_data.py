@@ -7,6 +7,8 @@ import pyvista as pv
 from ngsolve import H1, dx, BilinearForm, LinearForm, GridFunction, TaskManager, grad
 from ngsolve import Mesh as NgsMesh
 
+from embryoharmonics._utils import all_harmonic_names
+
 
 @dataclass
 class GeneData:
@@ -94,8 +96,9 @@ def interpolate_gene_data(
         gene_data: GeneData | Iterable[GeneData],
         pv_data: pv.UnstructuredGrid,
         *,
-        smoothness: float = 1.0
-) -> None:
+        smoothness: float = 1.0,
+        compute_eigen_coefficients: bool = False
+) -> None | Dict[str, np.ndarray]:
     """
     Interpolate gene expression data onto the mesh by solving a Poisson equation with the gene expression as the sources
     and homogeneous Neumann boundary conditions. Nan values are ignored.
@@ -104,6 +107,8 @@ def interpolate_gene_data(
     :param pv_data: A :class:`pyvista.UnstructuredGrid` object where the interpolated data is stored as a scalar field
     :param smoothness: A measure between 0 and infinity of how smooth the interpolated data should be (roughly the
         radius of the smoothing kernel)
+    :param compute_eigen_coefficients: Whether to compute the coefficients of the interpolated data with respect to the
+        eigenfunctions; if True, the coefficients are returned as a dictionary
     """
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]
@@ -120,12 +125,16 @@ def interpolate_gene_data(
     m = BilinearForm(fes)
     m += u * v * dx
 
+    harmonic_names = all_harmonic_names(pv_data)
+    eigen_coefficients = {}
+
     with TaskManager():
         a.Assemble()
         m.Assemble()
         m_inverse = m.mat.Inverse(fes.FreeDofs())
-        m.mat.AsVector().data += dt * a.mat.AsVector()
-        mstar_inverse = m.mat.Inverse(fes.FreeDofs())
+        mstar = m.mat.CreateMatrix()
+        mstar.AsVector().data = m.mat.AsVector() + dt * a.mat.AsVector()
+        mstar_inverse = mstar.Inverse(fes.FreeDofs())
 
         for data in gene_data:
             # Filter Nan values
@@ -151,4 +160,10 @@ def interpolate_gene_data(
             # Add the interpolated data to the pyvista data object
             pv_data[filtered_data.name] = solution.vec.FV().NumPy().copy()
 
+            if compute_eigen_coefficients:
+                m_times_solution = (m.mat * solution.vec).Evaluate().FV().NumPy()
+                coeff = np.array([np.dot(m_times_solution, pv_data[harmonic]) for harmonic in harmonic_names])
+                eigen_coefficients[filtered_data.name] = coeff
 
+    if compute_eigen_coefficients:
+        return eigen_coefficients
