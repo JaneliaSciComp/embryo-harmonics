@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterable, List
+from typing import Iterable, List, Dict
 
 import h5py
 import numpy as np

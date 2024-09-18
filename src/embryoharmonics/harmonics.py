@@ -1,4 +1,4 @@
-from typing import Literal, Tuple, Iterable, Dict, List
+from typing import Literal, Tuple, Iterable, Dict
 
 import numpy as np
 import pyvista as pv
@@ -7,6 +7,7 @@ import scipy.sparse.linalg as spla
 from ngsolve import H1, grad, dx, BilinearForm, GridFunction, x, y, Integrate
 from ngsolve import Mesh as NgsMesh
 
+from embryoharmonics._utils import harmonic_name, all_harmonic_names, retain_harmonics
 from embryoharmonics.gene_data import GeneData
 
 
@@ -57,7 +58,7 @@ def compute_harmonics(
 
     pv_data = _to_vtk(mesh)
     for i in range(k):
-        pv_data[_harmonic_name(i)] = full_eigvecs[:, i]
+        pv_data[harmonic_name(i)] = full_eigvecs[:, i]
 
     return pv_data, metrics
 
@@ -94,12 +95,12 @@ def compute_eigen_coefficients(
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]
 
-    harmonic_names = _all_harmonic_names(pv_data)
+    harmonic_names = all_harmonic_names(pv_data)
     coefficients = {}
 
     # Make a copy of the mesh data that stores only the harmonics (to avoid interpolating other fields)
     only_harmonics = pv_data.copy(deep=True)
-    _retain_harmonics(only_harmonics)
+    retain_harmonics(only_harmonics)
 
     for data in gene_data:
         # Filter Nan values and interpolate grid data onto the gene data locations
@@ -141,18 +142,3 @@ def _to_vtk(mesh: NgsMesh,) -> pv.UnstructuredGrid:
         cell_types.append(pv.CellType.TETRA)
 
     return pv.UnstructuredGrid(cells, cell_types, points)
-
-
-def _harmonic_name(i: int) -> str:
-    return f"harmonic_{i:03d}"
-
-
-def _all_harmonic_names(data: pv.UnstructuredGrid) -> List[str]:
-    return [name for name in data.array_names if name.startswith("harmonic_")]
-
-
-def _retain_harmonics(data: pv.DataSet) -> pv.DataSet:
-    for name in data.array_names:
-        if not name.startswith("harmonic_"):
-            data.point_data.remove(name)
-    return data
