@@ -59,8 +59,9 @@ for i in range(k):
 # %%
 # Gene data can be loaded and smoothly interpolated
 mat_file = h5py.File("/home/innerbergerm@hhmi.org/big-data/worm-geometry/4D_transcriptome.mat")
+gene_name = "cwn-1"
 gene_data_loader = GeneDataLoader(mat_file)
-gene_data = gene_data_loader.load("cwn-1", time_step)
+gene_data = gene_data_loader.load(gene_name, time_step)
 
 # TODO: there is a mismatch between the scales of the geometry and the gene data (about a factor of 5) - fix this in a general way!
 # If the factor is chosen too large, some points are outside the domain
@@ -73,14 +74,14 @@ print(pv_data.array_names)
 # The gene expression data was added to the pyvista data object
 plotter = pv.Plotter()
 slices = pv_data.slice_orthogonal()
-plotter.add_mesh(slices, scalars="cwn-1", cmap="turbo")
+plotter.add_mesh(slices, scalars=gene_name, cmap="turbo")
 plotter.show()
 
 # %%
 # If computed during smoothing, the eigen-coefficients of the smoothed gene expression can be plotted
-plt.scatter(range(k), np.abs(smoothed_coefficients["cwn-1"]))
+plt.scatter(range(k), np.abs(smoothed_coefficients[gene_name]))
 # plt.gca().set_yscale('log')
-plt.title("Eigen coefficients of smoothed cwn-1")
+plt.title(f"Eigen coefficients of smoothed {gene_name}")
 plt.xlabel("# harmonic")
 plt.ylabel("coefficient")
 plt.show()
@@ -88,8 +89,8 @@ plt.show()
 # %%
 # Also, it's possible to compute the eigen-coefficients of the gene expression directly without smoothing
 eigen_coefficients = compute_eigen_coefficients(pv_data, gene_data)
-plt.scatter(range(k), np.abs(eigen_coefficients["cwn-1"]))
-plt.title("Eigen coefficients of cwn-1")
+plt.scatter(range(k), np.abs(eigen_coefficients[gene_name]))
+plt.title(f"Eigen coefficients of {gene_name}")
 plt.xlabel("# harmonic")
 plt.ylabel("coefficient")
 plt.show()
