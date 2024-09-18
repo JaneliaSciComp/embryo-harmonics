@@ -15,13 +15,16 @@ def compute_harmonics(
         mesh,
         *,
         k: int = 10,
-        boundary_condition: Literal['dirichlet', 'neumann'] = "neumann"
+        boundary_condition: Literal['dirichlet', 'neumann'] = "neumann",
+        store_dirichlet_densities: bool = False,
 ) -> Tuple[pv.UnstructuredGrid, Dict[str, np.ndarray]]:
     """
     Compute the first k harmonics and some key metrics of the Laplace operator on a given mesh.
     :param mesh: The mesh to compute the harmonics on
     :param k: The number of harmonics to compute
     :param boundary_condition: The boundary condition to apply (either 'dirichlet' or 'neumann')
+    :param store_dirichlet_densities: Whether to store the densities of the Dirichlet energy in the radial, angular,
+        and z direction as functions as harmonic_XXX_dirichlet_[rpz] in the output data
     :return: The harmonics (as pyvista data structure), and a dictionary containing eigenvalues and the dirichlet
     energy in radial, angular, and z direction as numpy arrays
     """
@@ -50,36 +53,61 @@ def compute_harmonics(
     mass = _to_scipy_csr(m, mask)
     eigvals, eigvecs = spla.eigsh(A=stiffness, M=mass, k=k, which='LM', sigma=0.0)
 
-    r, phi, z = _compute_cylindrical_dirichlet_energy(fes, eigvecs)
-    metrics = dict(eigenvalues=eigvals, dirichlet_r=r, dirichlet_phi=phi, dirichlet_z=z)
+    dirichlet_energy = CylindricalDirichletEnergy(fes)
+    rpz = np.zeros((k, 3))
+    for i in range(k):
+        rpz[i, 0], rpz[i, 1], rpz[i, 2] = dirichlet_energy.compute_integral(eigvecs[:, i])
+    metrics = dict(eigenvalues=eigvals, dirichlet_r=rpz[:, 0], dirichlet_p=rpz[:, 1], dirichlet_z=rpz[:, 2])
 
     full_eigvecs = np.zeros((fes.ndof, k))
     full_eigvecs[mask, :] = eigvecs
 
     pv_data = _to_vtk(mesh)
     for i in range(k):
-        pv_data[harmonic_name(i)] = full_eigvecs[:, i]
+        name = harmonic_name(i)
+        pv_data[name] = full_eigvecs[:, i]
+        if store_dirichlet_densities:
+            r, p, z = dirichlet_energy.compute_density(eigvecs[:, i])
+            pv_data[f"{name}_dirichlet_r"] = r
+            pv_data[f"{name}_dirichlet_p"] = p
+            pv_data[f"{name}_dirichlet_z"] = z
 
     return pv_data, metrics
 
 
-def _compute_cylindrical_dirichlet_energy(fes, eigvecs):
-    u = GridFunction(fes)
-    n = eigvecs.shape[1]
-    dr = np.zeros((n,), dtype=np.float64)
-    dphi = np.zeros((n,), dtype=np.float64)
-    dz = np.zeros((n,), dtype=np.float64)
-    r_squared = x ** 2 + y ** 2
+class CylindricalDirichletEnergy:
+    def __init__(self, fes):
+        self.fes = fes
+        self.u = GridFunction(self.fes)
+        self.v = GridFunction(self.fes)
 
-    for i in range(n):
-        u.vec.FV().NumPy()[:] = eigvecs[:, i]
-        du = grad(u)
+    def compute_integral(self, eigvec):
+        dr, dp, dz = self._get_components(eigvec)
+        return Integrate(dr, self.fes.mesh), Integrate(dp, self.fes.mesh), Integrate(dz, self.fes.mesh)
 
-        dr[i] = Integrate((x * du[0] + y * du[1]) ** 2 / r_squared, fes.mesh)
-        dphi[i] = Integrate((-y * du[0] + x * du[1]) ** 2 / r_squared, fes.mesh)
-        dz[i] = Integrate(du[2] ** 2, fes.mesh)
 
-    return dr, dphi, dz
+    def compute_density(self, eigvec):
+        dr, dp, dz = self._get_components(eigvec)
+        self.v.Set(dr)
+        r = self.v.vec.FV().NumPy().copy()
+        self.v.Set(dp)
+        p = self.v.vec.FV().NumPy().copy()
+        self.v.Set(dz)
+        z = self.v.vec.FV().NumPy().copy()
+
+        return r, p, z
+
+    def _get_components(self, eigvec):
+        r_squared = x ** 2 + y ** 2
+
+        self.u.vec.FV().NumPy()[:] = eigvec[:]
+        du = grad(self.u)
+
+        dr = (x * du[0] + y * du[1]) ** 2 / r_squared
+        dp = (-y * du[0] + x * du[1]) ** 2 / r_squared
+        dz = du[2] ** 2
+
+        return dr, dp, dz
 
 
 def compute_eigen_coefficients(
