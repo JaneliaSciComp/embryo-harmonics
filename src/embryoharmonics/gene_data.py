@@ -1,11 +1,13 @@
 from dataclasses import dataclass
-from typing import Iterable, Tuple, Dict
+from typing import Iterable, List, Dict
 
 import h5py
 import numpy as np
 import pyvista as pv
 from ngsolve import H1, dx, BilinearForm, LinearForm, GridFunction, TaskManager, grad
 from ngsolve import Mesh as NgsMesh
+
+from embryoharmonics._utils import all_harmonic_names
 
 
 @dataclass
@@ -14,49 +16,115 @@ class GeneData:
     Data class representing the expression data for a gene at a single point in time.
     """
     name: str
-    location: np.ndarray
-    activity: np.ndarray
+    locations: np.ndarray
+    activities: np.ndarray
 
     def __len__(self) -> int:
-        return len(self.activity)
+        return len(self.activities)
 
     def filter_nan_values(self) -> "GeneData":
-        non_nan_indices = np.where(np.logical_not(np.isnan(self.activity)))[0]
-        return GeneData(self.name, self.location[non_nan_indices], self.activity[non_nan_indices])
+        non_nan_indices = np.where(np.logical_not(np.isnan(self.activities)))[0]
+        return GeneData(self.name, self.locations[non_nan_indices], self.activities[non_nan_indices])
 
 
-def load_gene_data(
-        h5file: h5py.File,
-        gene_name: str,
-        *,
-        time_steps: Iterable[int] = None
-) -> Tuple[Dict[int, GeneData], np.ndarray]:
+class GeneDataLoader:
     """
-    Load the gene expression data from the given file.
-    :param h5file: The name of the HDF5 file containing the gene expression data
-    :param gene_name: The name of the gene to load
-    :param time_steps: Which time steps to load (if None, all time steps are loaded; 1-based)
-    :return: A dictionary of time_step to :class:`GeneData` objects containing the gene expression data and the time
+    Class for loading gene expression data from an HDF5 file.
     """
-    # TODO: find out what the data format is and make more general
-    print("WARNING: Due to unspecified data format, this function most likely cannot deal with general data.")
+    def __init__(self, h5file: h5py.File):
+        """
+        Initialize the gene data loader.
+        :param h5file: The HDF5 file containing the gene expression data
+        """
+        self.h5file = h5file
 
-    time = h5file[f"{gene_name}_time"][0]
-    if time_steps is None:
-        # there is one extra group (measurements)
-        time_steps = range(len(time))
+        # Load all gene names
+        data = h5file["geneact"]
+        self._gene_to_index = _convert_raw_names(data["genes"][:])
+        self._tissue_to_index = _convert_raw_names(data["tissue_name"][:])
 
-    gene_act = h5file[f"{gene_name}_gene_act"]
-    pos = h5file[f"{gene_name}_xyz"]
+        # Load all time steps
+        time = data["timepoints"][0]
+        self._time_to_index = {time[i]: i for i in range(len(time))}
 
-    gene_data = {}
-    time_slice = []
-    for time_step in time_steps:
-        i = time_step - 1
-        gene_data[time_step] = GeneData(gene_name, pos[i], gene_act[i])
-        time_slice.append(time[i])
+        # Store handles to the gene expression data
+        self._gene_activities = data["data"]
+        self._tissues = data["tissue_id"]
+        self._locations = data["XYZ"]
 
-    return gene_data, np.array(time_slice)
+    @property
+    def gene_names(self) -> List[str]:
+        """
+        Get the names of all genes in the HDF5 file.
+        :return: The names of all genes
+        """
+        return list(self._gene_to_index.keys())
+
+    @property
+    def tissue_names(self) -> List[str]:
+        """
+        Get the names of all tissues in the HDF5 file.
+        :return: The names of all tissues
+        """
+        return list(self._tissue_to_index.keys())
+
+    @property
+    def time_steps(self) -> List[int]:
+        """
+        Get the time steps in the HDF5 file.
+        :return: The time steps in the HDF5 file
+        """
+        return list(self._time_to_index.keys())
+
+    def load(
+            self,
+            gene_name: str,
+            time_step: int
+    ) -> GeneData:
+        """
+        Load the gene expression data for the given gene.
+        :param gene_name: The name of the gene to load
+        :param time_step: Which time step to load
+        :return: A :class:`GeneData` object containing the gene expression data
+        """
+        try:
+            i = self._time_to_index[time_step]
+        except KeyError as e:
+            raise ValueError(f"Time step {time_step} not found in the HDF5 file") from e
+
+        try:
+            gene_index = self._gene_to_index[gene_name]
+        except KeyError as e:
+            raise ValueError(f"Gene {gene_name} not found in the HDF5 file") from e
+
+        return GeneData(gene_name, self._locations[i, :, :], self._gene_activities[i, gene_index, :])
+
+    def load_tissue(
+            self,
+            tissue_name: str,
+            time_step: int
+    ) -> GeneData:
+        """
+        Load the data for the given tissue (where the activity is just 1 for cells in the tissue and 0 otherwise).
+        :param tissue_name: The name of the tissue to load
+        :param time_step: Which time step to load
+        :return: A :class:`GeneData` object containing the tissue data
+        """
+        try:
+            i = self._time_to_index[time_step]
+        except KeyError as e:
+            raise ValueError(f"Time step {time_step} not found in the HDF5 file") from e
+
+        try:
+            tissue_index = self._tissue_to_index[tissue_name]
+        except KeyError as e:
+            raise ValueError(f"Tissue {tissue_name} not found in the HDF5 file") from e
+
+        return GeneData(tissue_name, self._locations[i, :, :], self._tissues[tissue_index, :])
+
+
+def _convert_raw_names(raw_names):
+    return {raw_names[:, i].astype(np.uint8).tobytes().decode('ascii').strip(): i for i in range(raw_names.shape[1])}
 
 
 def interpolate_gene_data(
@@ -64,16 +132,19 @@ def interpolate_gene_data(
         gene_data: GeneData | Iterable[GeneData],
         pv_data: pv.UnstructuredGrid,
         *,
-        smoothing_factor: float = 1.0
-) -> None:
+        smoothness: float = 1.0,
+        compute_eigen_coefficients: bool = False
+) -> None | Dict[str, np.ndarray]:
     """
     Interpolate gene expression data onto the mesh by solving a Poisson equation with the gene expression as the sources
     and homogeneous Neumann boundary conditions. Nan values are ignored.
     :param mesh: The mesh to interpolate the gene data onto
     :param gene_data: A :class:`GeneData` object containing the gene expression data
     :param pv_data: A :class:`pyvista.UnstructuredGrid` object where the interpolated data is stored as a scalar field
-    :param smoothing_factor: A measure between 0 and infinity of how much smoothing to apply to the interpolated data
-        (the diffusion coefficient)
+    :param smoothness: A measure between 0 and infinity of how smooth the interpolated data should be (roughly the
+        radius of the smoothing kernel)
+    :param compute_eigen_coefficients: Whether to compute the coefficients of the interpolated data with respect to the
+        harmonics; if True, the coefficients are returned as a dictionary
     """
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]
@@ -84,33 +155,51 @@ def interpolate_gene_data(
     fes = H1(mesh, order=1)
     u, v = fes.TnT()
 
+    D = smoothness ** 2
     a = BilinearForm(fes)
-    a += smoothing_factor * grad(u) * grad(v) * dx
+    a += D * grad(u) * grad(v) * dx
     m = BilinearForm(fes)
     m += u * v * dx
+
+    harmonic_names = all_harmonic_names(pv_data)
+    eigen_coefficients = {}
 
     with TaskManager():
         a.Assemble()
         m.Assemble()
-        m.mat.AsVector().data += dt * a.mat.AsVector()
-        mstar_inverse = m.mat.Inverse(fes.FreeDofs())
+        m_inverse = m.mat.Inverse(fes.FreeDofs())
+        mstar = m.mat.CreateMatrix()
+        mstar.AsVector().data = m.mat.AsVector() + dt * a.mat.AsVector()
+        mstar_inverse = mstar.Inverse(fes.FreeDofs())
 
         for data in gene_data:
             # Filter Nan values
             filtered_data = data.filter_nan_values()
+            is_in_mesh = np.array([mesh.Contains(*p) for p in filtered_data.locations])
+            if not np.all(is_in_mesh):
+                print(f"WARNING: {np.sum(~is_in_mesh)} out of {len(is_in_mesh)} locations are outside the mesh and could not be interpolated for gene {filtered_data.name}")
 
             # Use gene expression data as point sources
             f = LinearForm(fes)
             for i in range(len(filtered_data)):
-                f += (filtered_data.activity[i] * v)(*filtered_data.location[i])
+                if is_in_mesh[i]:
+                    f += (filtered_data.activities[i] * v)(*filtered_data.locations[i])
 
+            # First, L2-interpolate the gene expression data onto the mesh, then smooth it via the heat equation
             f.Assemble()
             solution = GridFunction(fes)
+            solution.vec.data = m_inverse * f.vec
             for _ in range(n_time_steps):
-                res = dt * (f.vec - a.mat * solution.vec)
+                res = -dt * (a.mat * solution.vec)
                 solution.vec.data += mstar_inverse * res
 
             # Add the interpolated data to the pyvista data object
             pv_data[filtered_data.name] = solution.vec.FV().NumPy().copy()
 
+            if compute_eigen_coefficients:
+                m_times_solution = (m.mat * solution.vec).Evaluate().FV().NumPy()
+                coeff = np.array([np.dot(m_times_solution, pv_data[harmonic]) for harmonic in harmonic_names])
+                eigen_coefficients[filtered_data.name] = coeff
 
+    if compute_eigen_coefficients:
+        return eigen_coefficients

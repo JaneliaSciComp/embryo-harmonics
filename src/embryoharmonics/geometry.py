@@ -1,5 +1,5 @@
 import math
-from typing import Dict, Iterable
+from typing import List
 
 import h5py
 import numpy as np
@@ -27,6 +27,61 @@ class EmbryoModel:
     @property
     def n_transverse_splines(self):
         return len(self.transverse_splines)
+
+
+class EmbryoModelLoader:
+    """
+    Class for loading averaged C. elegans geometry models from an HDF5 file.
+    """
+    def __init__(self, h5file: h5py.File):
+        """
+        Initialize the embryo model loader.
+        :param h5file: The HDF5 file containing the geometry models.
+        """
+        self.h5file = h5file
+
+        # Initialize all time steps
+        # The data starts at time 420 and then continues with stride 1
+        time = [419 + i for i in range(1, len(h5file))]
+        self._time_to_index = {time[i]: i + 1 for i in range(len(time))}
+
+    @property
+    def time_steps(self) -> List[int]:
+        """
+        Get the time steps in the HDF5 file.
+        :return: The time steps in the HDF5 file
+        """
+        return list(self._time_to_index.keys())
+
+    def load(
+            self,
+            time_step: int
+    ) -> EmbryoModel:
+        """
+        Load an averaged model for the given time step.
+        :param time_step: Which time step to load
+        :return: An :class:`EmbryoModel` object containing the geometry data
+        """
+        try:
+            i = self._time_to_index[time_step]
+        except KeyError as e:
+            raise ValueError(f"Time step {time_step} not found in the HDF5 file") from e
+
+        model = self.h5file[f"avg_model_{i:03d}"]
+        names = [s.decode('utf-8') for s in model["names"][:]]
+
+        central_spline = model["central_spline"]
+        spline_domain = central_spline["abscissa"][:]
+        central_coordinates = _convert_to_ndarray(central_spline["ordinate"][:])
+
+        locations = model["transverse_splines"]
+        transverse_coordinates = []
+        for i in range(32):
+            raw_data = locations[f"transverse_spline_{i + 1:02d}/ordinate"][:]
+            cleaned_data = _convert_to_ndarray(raw_data)
+            transverse_coordinates.append(cleaned_data)
+
+        return EmbryoModel(names, spline_domain, central_coordinates, transverse_coordinates)
 
 
 def _assemble_embryo_geometry(
@@ -66,53 +121,6 @@ def load_measurement(
     length = h5file["measurements/length"][:]
     volume = h5file["measurements/volume"][:]
     return length, volume
-
-
-def load_avg_models(
-       h5file: h5py.File,
-        *,
-        time_steps: Iterable[int] = None
-) -> Dict[int, EmbryoModel]:
-    """
-    Load all averaged models from the given HDF5 file.
-    :param h5file: The HDF5 file containing spline data for the averaged models
-    :param time_steps: Which time steps to load (if None, all time steps are loaded; 1-based)
-    :return: A dictionary mapping time steps to the corresponding models
-    """
-    if time_steps is None:
-        # there is one extra group (measurements)
-        time_steps = range(1, len(h5file.keys()))
-
-    models = {}
-    for time_step in time_steps:
-        model = h5file[f"avg_model_{time_step:03d}"]
-        models[time_step] = _load_single_model(model)
-
-    return models
-
-
-def _load_single_model(
-        model: h5py.Group,
-) -> EmbryoModel:
-    """
-    Load a single averaged model from the given HDF5 group.
-    :param model: The HDF5 group containing spline data for the averaged model
-    :return: Spline data for the averaged model
-    """
-    names = [s.decode('utf-8') for s in model["names"][:]]
-
-    central_spline = model["central_spline"]
-    spline_domain = central_spline["abscissa"][:]
-    central_coordinates = _convert_to_ndarray(central_spline["ordinate"][:])
-
-    locations = model["transverse_splines"]
-    transverse_coordinates = []
-    for i in range(32):
-        raw_data = locations[f"transverse_spline_{i + 1:02d}/ordinate"][:]
-        cleaned_data = _convert_to_ndarray(raw_data)
-        transverse_coordinates.append(cleaned_data)
-
-    return EmbryoModel(names, spline_domain, central_coordinates, transverse_coordinates)
 
 
 def _convert_to_ndarray(

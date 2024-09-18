@@ -1,21 +1,33 @@
+from typing import Literal
+
 import pyvista as pv
 
-from embryoharmonics.harmonics import _harmonic_name
+from embryoharmonics.harmonics import harmonic_name
 
 
-def plot_eigenfunction(
+def plot_harmonic(
         pv_data: pv.UnstructuredGrid,
         k: int,
+        *,
         cmap: str = 'turbo',
+        dirichlet: Literal["r", "p", "z"] = None,
 ) -> pv.Plotter:
     """
-    Plot the k-th eigenfunction of a given mesh.
+    Plot the k-th harmonic of a given mesh.
     :param pv_data: The mesh data to plot
-    :param k: The index of the eigenfunction to plot
+    :param k: The index of the harmonic to plot
     :param cmap: The colormap to use (default: 'turbo')
+    :param dirichlet: If given, plot the Dirichlet density of the given type
     :return: The plotter object
     """
-    scalar_name = _harmonic_name(k)
+    scalar_name = harmonic_name(k)
+    match dirichlet:
+        case "r":
+            scalar_name += "_dirichlet_r"
+        case "p":
+            scalar_name += "_dirichlet_p"
+        case "z":
+            scalar_name += "_dirichlet_z"
 
     camera = pv.Camera()
     camera.position = (-400.0, 400.0, -500.0)

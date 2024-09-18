@@ -1,9 +1,9 @@
-from .geometry import EmbryoModel, load_avg_models, load_measurement
+from .geometry import EmbryoModel, EmbryoModelLoader, load_measurement
 from .meshing import generate_embryo_mesh
-from .gene_data import GeneData, interpolate_gene_data, load_gene_data
-from .harmonics import compute_eigen_coefficients, compute_harmonics
-from .visualization import plot_eigenfunction
+from .gene_data import GeneData, interpolate_gene_data, GeneDataLoader
+from .harmonics import compute_eigen_coefficients, compute_harmonics, compose_eigen_coefficients
+from .visualization import plot_harmonic
 
-__all__ = ["EmbryoModel", "load_avg_models", "load_measurement", "generate_embryo_mesh", "GeneData",
-           "interpolate_gene_data", "load_gene_data", "compute_eigen_coefficients", "compute_harmonics",
-           "plot_eigenfunction"]
+__all__ = ["EmbryoModel", "EmbryoModelLoader", "load_measurement", "generate_embryo_mesh", "GeneData",
+           "interpolate_gene_data", "GeneDataLoader", "compute_eigen_coefficients", "compute_harmonics",
+           "plot_harmonic", "compose_eigen_coefficients"]
