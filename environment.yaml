@@ -11,6 +11,7 @@ dependencies:
   - trame
   - trame-vtk
   - trame-vuetify
+  - tqdm
   - jupyter
   - jupytext
   - pip
