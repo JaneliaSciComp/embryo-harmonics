@@ -123,6 +123,7 @@ def interpolate_gene_data(
     with TaskManager():
         a.Assemble()
         m.Assemble()
+        m_inverse = m.mat.Inverse(fes.FreeDofs())
         m.mat.AsVector().data += dt * a.mat.AsVector()
         mstar_inverse = m.mat.Inverse(fes.FreeDofs())
 
@@ -139,12 +140,13 @@ def interpolate_gene_data(
                 if is_in_mesh[i]:
                     f += (filtered_data.activities[i] * v)(*filtered_data.locations[i])
 
+            # First, L2-interpolate the gene expression data onto the mesh, then smooth it via the heat equation
             f.Assemble()
             solution = GridFunction(fes)
-            res = dt * f.vec
+            solution.vec.data = m_inverse * f.vec
             for _ in range(n_time_steps):
-                solution.vec.data += mstar_inverse * res
                 res = -dt * (a.mat * solution.vec)
+                solution.vec.data += mstar_inverse * res
 
             # Add the interpolated data to the pyvista data object
             pv_data[filtered_data.name] = solution.vec.FV().NumPy().copy()
