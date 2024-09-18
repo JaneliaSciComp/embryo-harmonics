@@ -170,3 +170,19 @@ def _to_vtk(mesh: NgsMesh,) -> pv.UnstructuredGrid:
         cell_types.append(pv.CellType.TETRA)
 
     return pv.UnstructuredGrid(cells, cell_types, points)
+
+
+def compose_eigen_coefficients(
+        pv_data: pv.UnstructuredGrid,
+        eigen_coefficients: np.ndarray,
+        name: str
+) -> None:
+    """
+    Compose harmonics weighted by the given eigen coefficients (NaNs are ignored).
+    :param pv_data: The mesh data to compose the harmonics on
+    :param eigen_coefficients: The weights to use for composing the harmonics
+    :param name: The name of the composed field (will be added to pv_data)
+    """
+    indices = [i for i in range(len(eigen_coefficients)) if not np.isnan(eigen_coefficients[i])]
+    result = sum(eigen_coefficients[i] * pv_data[harmonic_name(i)] for i in indices)
+    pv_data[name] = result

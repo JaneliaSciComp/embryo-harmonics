@@ -71,7 +71,6 @@ gene_data = gene_data_loader.load(gene_name, time_step)
 gene_data.locations *= 5
 
 smoothed_coefficients = interpolate_gene_data(mesh, gene_data, pv_data, smoothness=10, compute_eigen_coefficients=True)
-print(pv_data.array_names)
 
 # %%
 # The gene expression data was added to the pyvista data object
@@ -97,4 +96,13 @@ plt.title(f"Eigen coefficients of {gene_name}")
 plt.xlabel("# harmonic")
 plt.ylabel("coefficient")
 plt.show()
+# %%
+# The gene expression data reconstructed from the eigen-coefficients
+compose_eigen_coefficients(pv_data, eigen_coefficients[gene_name], "composed-gene")
+plotter = pv.Plotter()
+slices = pv_data.slice_orthogonal()
+plotter.add_mesh(slices, scalars="composed-gene", cmap="turbo")
+plotter.show()
+print(pv_data.array_names)
+
 # %%
