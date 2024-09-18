@@ -19,8 +19,8 @@ def compute_harmonics(
 ) -> Tuple[pv.UnstructuredGrid, Dict[str, np.ndarray]]:
     """
     Compute the first k harmonics and some key metrics of the Laplace operator on a given mesh.
-    :param mesh: The mesh to compute the eigenfunctions on
-    :param k: The number of eigenfunctions to compute
+    :param mesh: The mesh to compute the harmonics on
+    :param k: The number of harmonics to compute
     :param boundary_condition: The boundary condition to apply (either 'dirichlet' or 'neumann')
     :return: The harmonics (as pyvista data structure), and a dictionary containing eigenvalues and the dirichlet
     energy in radial, angular, and z direction as numpy arrays
@@ -87,10 +87,10 @@ def compute_eigen_coefficients(
         gene_data: GeneData | Iterable[GeneData],
 ) -> Dict[str, np.ndarray]:
     """
-    Compute the coefficients of the given fields with respect to the eigenfunctions.
+    Compute the coefficients of the given fields with respect to the harmonics.
     :param pv_data: The mesh data to compute the coefficients for
     :param gene_data: The gene data to compute the coefficients for
-    :return: The coefficients of the fields with respect to the eigenfunctions
+    :return: The coefficients of the fields with respect to the harmonics
     """
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]

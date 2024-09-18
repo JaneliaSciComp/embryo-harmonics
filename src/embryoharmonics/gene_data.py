@@ -108,7 +108,7 @@ def interpolate_gene_data(
     :param smoothness: A measure between 0 and infinity of how smooth the interpolated data should be (roughly the
         radius of the smoothing kernel)
     :param compute_eigen_coefficients: Whether to compute the coefficients of the interpolated data with respect to the
-        eigenfunctions; if True, the coefficients are returned as a dictionary
+        harmonics; if True, the coefficients are returned as a dictionary
     """
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]

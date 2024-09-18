@@ -3,15 +3,15 @@ import pyvista as pv
 from embryoharmonics.harmonics import harmonic_name
 
 
-def plot_eigenfunction(
+def plot_harmonic(
         pv_data: pv.UnstructuredGrid,
         k: int,
         cmap: str = 'turbo',
 ) -> pv.Plotter:
     """
-    Plot the k-th eigenfunction of a given mesh.
+    Plot the k-th harmonic of a given mesh.
     :param pv_data: The mesh data to plot
-    :param k: The index of the eigenfunction to plot
+    :param k: The index of the harmonic to plot
     :param cmap: The colormap to use (default: 'turbo')
     :return: The plotter object
     """
