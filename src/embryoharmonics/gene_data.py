@@ -40,8 +40,8 @@ class GeneDataLoader:
 
         # Load all gene names
         data = h5file["geneact"]
-        names = data["genes"][:].T
-        self._name_to_index = {names[i].astype(np.uint8).tobytes().decode('ascii').strip(): i for i in range(len(names))}
+        self._gene_to_index = _convert_raw_names(data["genes"][:])
+        self._tissue_to_index = _convert_raw_names(data["tissue_name"][:])
 
         # Load all time steps
         time = data["timepoints"][0]
@@ -49,6 +49,7 @@ class GeneDataLoader:
 
         # Store handles to the gene expression data
         self._gene_activities = data["data"]
+        self._tissues = data["tissue_id"]
         self._locations = data["XYZ"]
 
     @property
@@ -57,7 +58,15 @@ class GeneDataLoader:
         Get the names of all genes in the HDF5 file.
         :return: The names of all genes
         """
-        return list(self._name_to_index.keys())
+        return list(self._gene_to_index.keys())
+
+    @property
+    def tissue_names(self) -> List[str]:
+        """
+        Get the names of all tissues in the HDF5 file.
+        :return: The names of all tissues
+        """
+        return list(self._tissue_to_index.keys())
 
     @property
     def time_steps(self) -> List[int]:
@@ -84,11 +93,38 @@ class GeneDataLoader:
             raise ValueError(f"Time step {time_step} not found in the HDF5 file") from e
 
         try:
-            gene_index = self._name_to_index[gene_name]
+            gene_index = self._gene_to_index[gene_name]
         except KeyError as e:
             raise ValueError(f"Gene {gene_name} not found in the HDF5 file") from e
 
         return GeneData(gene_name, self._locations[i, :, :], self._gene_activities[i, gene_index, :])
+
+    def load_tissue(
+            self,
+            tissue_name: str,
+            time_step: int
+    ) -> GeneData:
+        """
+        Load the data for the given tissue (where the activity is just 1 for cells in the tissue and 0 otherwise).
+        :param tissue_name: The name of the tissue to load
+        :param time_step: Which time step to load
+        :return: A :class:`GeneData` object containing the tissue data
+        """
+        try:
+            i = self._time_to_index[time_step]
+        except KeyError as e:
+            raise ValueError(f"Time step {time_step} not found in the HDF5 file") from e
+
+        try:
+            tissue_index = self._tissue_to_index[tissue_name]
+        except KeyError as e:
+            raise ValueError(f"Tissue {tissue_name} not found in the HDF5 file") from e
+
+        return GeneData(tissue_name, self._locations[i, :, :], self._tissues[tissue_index, :])
+
+
+def _convert_raw_names(raw_names):
+    return {raw_names[:, i].astype(np.uint8).tobytes().decode('ascii').strip(): i for i in range(raw_names.shape[1])}
 
 
 def interpolate_gene_data(
