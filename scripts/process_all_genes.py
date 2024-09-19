@@ -34,6 +34,11 @@ root = os.path.normpath(os.path.join(os.getcwd(), '..', 'results'))
 os.makedirs(root, exist_ok=True)
 
 # %%
+# Find out at which time steps gene data is actually available
+actual_time_steps = h5file['geneact/timepoints'][0]
+time_steps = [t for t in time_steps if t in actual_time_steps]
+
+# %%
 # Find out how many harmonics were stored
 # The order of the harmonics will match the order of the coefficients computed below
 first_geometry = pv.read(os.path.join(root, "data_420.vtu"))
@@ -73,9 +78,10 @@ def write_data(file):
     gene_coeff = np.zeros((len(time_steps), len(gene_names), len(all_harmonics)), dtype=np.float64)
     tissue_coeff = np.zeros((len(time_steps), len(tissue_names), len(all_harmonics)), dtype=np.float64)
 
-    for i, t in tqdm(enumerate(time_steps)):
+    for i, t in enumerate(tqdm(time_steps)):
         # Load the mesh for the current time step and compute coefficients for all genes and tissues
         pv_data = pv.read(os.path.join(root, f"data_{t:03d}.vtu"))
+
         gene_data = [gene_data_loader.load(gene, t) for gene in gene_names]
         tissue_data = [gene_data_loader.load_tissue(tissue, t) for tissue in tissue_names]
         eigen_coefficients = compute_eigen_coefficients(pv_data, gene_data + tissue_data)
