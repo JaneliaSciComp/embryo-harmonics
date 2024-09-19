@@ -32,6 +32,7 @@ embryo_model_loader = EmbryoModelLoader(h5file)
 root = os.path.normpath(os.path.join(os.getcwd(), '..', 'results'))
 os.makedirs(root, exist_ok=True)
 
+# %%
 for time_step in tqdm(time_steps):
     embryo_model = embryo_model_loader.load(time_step)
     mesh = generate_embryo_mesh(embryo_model, mesh_size=5)
