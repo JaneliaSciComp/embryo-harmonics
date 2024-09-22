@@ -19,15 +19,17 @@ import numpy as np
 from ngsolve import H1, dx, grad, BilinearForm, GridFunction
 from ngsolve.webgui import Draw
 
-from embryoharmonics import load_avg_models, generate_embryo_mesh
+from embryoharmonics import EmbryoModelLoader, generate_embryo_mesh
+from scripts.assemble_embryo_geometry import embryo_model_loader
 
 # %%
 path = "/home/innerbergerm@hhmi.org/big-data/worm-geometry/celegans_avg_models_2024_04_23.h5"
 h5file = h5py.File(path, 'r')
 
 # %%
-time_step = 1
-embryo_model = load_avg_models(h5file, time_steps=[time_step])[time_step]
+time_step = 420
+embryo_model_loader = EmbryoModelLoader(h5file)
+embryo_model = embryo_model_loader.load(time_step)
 mesh = generate_embryo_mesh(embryo_model, mesh_size=5)
 print(f"Number of elements: {mesh.ne}")
 

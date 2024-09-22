@@ -3,7 +3,7 @@ import h5py
 import netgen.occ as occ
 from netgen.webgui import Draw
 
-from embryoharmonics.geometry import load_avg_models, _get_spline_surface
+from embryoharmonics.geometry import _get_spline_surface, EmbryoModelLoader
 from embryoharmonics.meshing import _convert_to_volume_mesh
 
 # %%
@@ -12,8 +12,9 @@ h5file = h5py.File(path, 'r')
 
 # %%
 # visualize all splines for given time step
-time_step = 1
-embryo_model = load_avg_models(h5file, time_steps=[time_step])[time_step]
+time_step = 420
+embryo_model_loader = EmbryoModelLoader(h5file)
+embryo_model = embryo_model_loader.load(time_step)
 
 # %%
 # Generate surface splines (using fewer interpolations points seems to yield better results because of numerical instabilities)

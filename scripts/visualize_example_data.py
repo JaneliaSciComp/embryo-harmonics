@@ -6,7 +6,7 @@ import h5py
 import numpy as np
 from matplotlib import pyplot as plt
 
-from embryoharmonics import load_avg_models
+from embryoharmonics import EmbryoModelLoader
 
 # %%
 # Open HDF5 file
@@ -15,8 +15,9 @@ h5file = h5py.File(path, 'r')
 
 # %%
 # Load all splines for given time step
-time_step = 1
-embryo_model = load_avg_models(h5file, time_steps=[time_step])[time_step]
+time_step = 420
+embryo_model_loader = EmbryoModelLoader(h5file)
+embryo_model = embryo_model_loader.load(time_step)
 
 # %%
 # Seam cells are the marker cells on the left and right of the embryo by which the straightening was done
