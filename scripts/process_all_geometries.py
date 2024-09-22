@@ -13,13 +13,25 @@
 # ---
 
 # %%
+import logging
 import os
+import time
 
 import h5py
 import numpy as np
 from tqdm.notebook import tqdm
 
 from embryoharmonics import *
+
+# %%
+# Set up logging
+logger = logging.getLogger("embryoharmonics")
+logger.setLevel(logging.INFO)
+timestr = time.strftime("%Y%m%d-%H%M%S")
+handler = logging.FileHandler(os.path.join(os.getcwd(), '..', 'logs', f'{timestr}_process_all_geometries.log'))
+formatter = logging.Formatter('[%(asctime)s - %(name)s] %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 # %%
 path = "/home/innerbergerm@hhmi.org/big-data/worm-geometry/celegans_avg_models_2024_04_23.h5"

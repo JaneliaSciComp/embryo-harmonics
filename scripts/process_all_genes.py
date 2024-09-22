@@ -13,7 +13,9 @@
 # ---
 
 # %%
+import logging
 import os
+import time
 
 import h5py
 import numpy as np
@@ -22,6 +24,16 @@ from tqdm.notebook import tqdm
 
 from embryoharmonics import *
 from embryoharmonics._utils import all_harmonic_names
+
+# %%
+# Set up logging
+logger = logging.getLogger("embryoharmonics")
+logger.setLevel(logging.INFO)
+timestr = time.strftime("%Y%m%d-%H%M%S")
+handler = logging.FileHandler(os.path.join(os.getcwd(), '..', 'logs', f'{timestr}_process_all_genes.log'))
+formatter = logging.Formatter('[%(asctime)s - %(name)s] %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 # %%
 path = "/home/innerbergerm@hhmi.org/big-data/worm-geometry/4D_transcriptome.mat"
