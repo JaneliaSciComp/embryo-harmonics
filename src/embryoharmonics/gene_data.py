@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import Iterable, List, Dict
 
@@ -8,6 +9,9 @@ from ngsolve import H1, dx, BilinearForm, LinearForm, GridFunction, TaskManager,
 from ngsolve import Mesh as NgsMesh
 
 from embryoharmonics._utils import all_harmonic_names
+
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -87,6 +91,7 @@ class GeneDataLoader:
         :param time_step: Which time step to load
         :return: A :class:`GeneData` object containing the gene expression data
         """
+        _logger.info("Loading gene %s at time step %d from '%s'", gene_name, time_step, self.h5file.filename)
         try:
             i = self._time_to_index[time_step]
         except KeyError as e:
@@ -120,6 +125,7 @@ class GeneDataLoader:
         except KeyError as e:
             raise ValueError(f"Tissue {tissue_name} not found in the HDF5 file") from e
 
+        _logger.info("Loading tissue %s at time step %d from '%s'", tissue_name, time_step, self.h5file.filename)
         return GeneData(tissue_name, self._locations[i, :, :], self._tissues[tissue_index, :])
 
 
@@ -148,6 +154,7 @@ def interpolate_gene_data(
     """
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]
+    _logger.info("Interpolating gene data for %s onto the mesh", ", ".join(data.name for data in gene_data))
 
     # Set up lowest-order finite element problem for the Poisson equation
     n_time_steps = 100
@@ -173,11 +180,14 @@ def interpolate_gene_data(
         mstar_inverse = mstar.Inverse(fes.FreeDofs())
 
         for data in gene_data:
+            _logger.info("Interpolating gene %s", data.name)
+
             # Filter Nan values
             filtered_data = data.filter_nan_values()
             is_in_mesh = np.array([mesh.Contains(*p) for p in filtered_data.locations])
             if not np.all(is_in_mesh):
-                print(f"WARNING: {np.sum(~is_in_mesh)} out of {len(is_in_mesh)} locations are outside the mesh and could not be interpolated for gene {filtered_data.name}")
+                _logger.warning("%d out of %d locations are outside the mesh and could not be interpolated for gene %s",
+                                np.sum(~is_in_mesh), len(is_in_mesh), filtered_data.name)
 
             # Use gene expression data as point sources
             f = LinearForm(fes)

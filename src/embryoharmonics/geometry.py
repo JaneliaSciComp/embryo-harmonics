@@ -1,3 +1,4 @@
+import logging
 import math
 from typing import List
 
@@ -5,6 +6,9 @@ import h5py
 import numpy as np
 from netgen import occ
 from scipy.interpolate import CubicSpline
+
+
+_logger = logging.getLogger(__name__)
 
 
 class EmbryoModel:
@@ -62,6 +66,7 @@ class EmbryoModelLoader:
         :param time_step: Which time step to load
         :return: An :class:`EmbryoModel` object containing the geometry data
         """
+        _logger.info("Loading averaged model for time step %s from '%s'", time_step, self.h5file.filename)
         try:
             i = self._time_to_index[time_step]
         except KeyError as e:
@@ -118,6 +123,7 @@ def load_measurement(
     :param h5file: The HDF5 file containing the measurements
     :return: Length and volume measurements as numpy arrays
     """
+    _logger.info("Loading measurements from '%s'", h5file.filename)
     length = h5file["measurements/length"][:]
     volume = h5file["measurements/volume"][:]
     return length, volume

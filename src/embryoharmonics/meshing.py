@@ -1,3 +1,4 @@
+import logging
 from typing import Tuple, Dict
 
 import numpy as np
@@ -8,6 +9,9 @@ from netgen.meshing import Mesh as NetgenMesh
 from ngsolve import Mesh as NgsMesh
 
 from embryoharmonics.geometry import EmbryoModel, _get_spline_surface
+
+
+_logger = logging.getLogger(__name__)
 
 
 def generate_embryo_mesh(
@@ -22,6 +26,7 @@ def generate_embryo_mesh(
     :param mesh_size: The maximum mesh size
     :return: The volume mesh of the embryo model
     """
+    _logger.info("Generating mesh for embryo model")
     worm_geometry = _assemble_embryo_geometry(embryo_model, n_interpolation)
     return _mesh_embryo_geometry(worm_geometry, mesh_size)
 
@@ -87,6 +92,8 @@ def _convert_to_volume_mesh(
     new_mesh = NetgenMesh()
     old_to_new = {}
 
+    _logger.debug("Converting surface mesh with %d nodes to volume mesh", n_nodes)
+
     if max_node_distance is not None:
         # Find all nodes that are too close to each other ("doppelgängers")
         kdtree = KDTree(surface_mesh.Coordinates())
@@ -97,6 +104,7 @@ def _convert_to_volume_mesh(
         pairs = np.vstack([dist['i'], dist['j']])
         pairs = np.sort(pairs, axis=0)
         pairs = np.unique(pairs, axis=1)
+        _logger.debug("Found %d pairs of close nodes to identify", len(pairs[0]))
 
         # Mark all nodes that have a doppelgänger
         node_is_unique[pairs[0]] = False
@@ -125,4 +133,5 @@ def _convert_to_volume_mesh(
 
     # Generate volume mesh from surface
     new_mesh.GenerateVolumeMesh(maxh=mesh_size)
+    _logger.debug("Converted surface mesh to volume mesh with %d nodes and %d elements", len(new_mesh.Points()), new_mesh.ne)
     return new_mesh, old_to_new

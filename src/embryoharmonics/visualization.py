@@ -1,8 +1,12 @@
+import logging
 from typing import Literal
 
 import pyvista as pv
 
 from embryoharmonics.harmonics import harmonic_name
+
+
+_logger = logging.getLogger(__name__)
 
 
 def plot_harmonic(
@@ -28,6 +32,8 @@ def plot_harmonic(
             scalar_name += "_dirichlet_p"
         case "z":
             scalar_name += "_dirichlet_z"
+
+    _logger.debug("Plotting harmonic %d with name %s", k, scalar_name)
 
     camera = pv.Camera()
     camera.position = (-400.0, 400.0, -500.0)
