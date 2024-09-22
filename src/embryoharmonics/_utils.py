@@ -10,7 +10,7 @@ def harmonic_name(i: int) -> str:
     return f"harmonic_{i:03d}"
 
 
-def all_harmonic_names(data: pv.UnstructuredGrid) -> List[str]:
+def all_harmonic_names(data: pv.DataSet) -> List[str]:
     return [name for name in data.array_names if HARMONIC_PATTERN.fullmatch(name)]
 
 

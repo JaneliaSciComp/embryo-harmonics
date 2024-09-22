@@ -116,7 +116,7 @@ class CylindricalDirichletEnergy:
 
 
 def compute_eigen_coefficients(
-        pv_data: pv.UnstructuredGrid,
+        pv_data: pv.DataSet,
         gene_data: GeneData | Iterable[GeneData],
 ) -> Dict[str, np.ndarray]:
     """

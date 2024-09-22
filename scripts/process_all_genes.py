@@ -67,8 +67,8 @@ def write_meta_data(file):
     
     # Write tissue names (same format as matlab char arrays are stored in mat files: an array of space padded ascii-chars)
     max_tissue_name_length = max(len(name) for name in gene_data_loader.tissue_names)
-    tissue_names = [name.ljust(max_gene_name_length).encode('ascii') for name in gene_data_loader.tissue_names]
-    tissue_names = np.array([np.frombuffer(gene_names[:, i], dtype=np.uint8) for i in range(len(gene_names))]).T.astype(np.uint16)
+    tissue_names = [name.ljust(max_tissue_name_length).encode('ascii') for name in gene_data_loader.tissue_names]
+    tissue_names = np.array([np.frombuffer(gene_names[:, i], dtype=np.uint8) for i in range(len(tissue_names))]).T.astype(np.uint16)
     file.create_dataset('tissue_names', data=tissue_names)
     
     # Write all time points
