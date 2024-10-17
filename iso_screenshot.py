@@ -11,7 +11,8 @@ paraview.simple._DisableFirstRenderCameraReset()
 def produce_screenshot(harmonic_number):
     # Find harmonic name as stored in the data
     harmonic_name = f'harmonic_{harmonic_number:03d}'
-    ResetSession()
+    Disconnect()
+    Connect()
 
     # Load data and select the array to visualize
     data = XMLUnstructuredGridReader(registrationName='data', FileName=['/home/innerbergerm@hhmi.org/Projects/janelia/embryo-harmonics/results/data_420.vtu'])
