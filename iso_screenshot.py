@@ -4,6 +4,7 @@
 #paraview.compatibility.minor = 13
 
 #### import the simple module from the paraview
+import os
 from paraview.simple import *
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
@@ -57,9 +58,10 @@ def produce_screenshot(harmonic_number):
     render_view.CameraParallelScale = 270.1858280738312
 
     # save screenshot
-    SaveScreenshot(filename=f'/home/innerbergerm@hhmi.org/Projects/janelia/embryo-harmonics/images/{harmonic_name}_iso_debug.png', viewOrLayout=render_view, location=16, ImageResolution=[846, 870],
+    os.makedirs('/home/innerbergerm@hhmi.org/Projects/janelia/embryo-harmonics/images/time_420', exist_ok=True)
+    SaveScreenshot(filename=f'/home/innerbergerm@hhmi.org/Projects/janelia/embryo-harmonics/images/iso_420/{harmonic_name}_iso.png', viewOrLayout=render_view, location=16, ImageResolution=[846, 870],
                    TransparentBackground=1)
 
 
-produce_screenshot(13)
-produce_screenshot(14)
+for i in range(100):
+    produce_screenshot(i)
