@@ -58,8 +58,8 @@ def produce_screenshot(harmonic_number):
     render_view.CameraParallelScale = 270.1858280738312
 
     # save screenshot
-    os.makedirs('/home/innerbergerm@hhmi.org/Projects/janelia/embryo-harmonics/images/time_420', exist_ok=True)
-    SaveScreenshot(filename=f'/home/innerbergerm@hhmi.org/Projects/janelia/embryo-harmonics/images/iso_420/{harmonic_name}_iso.png', viewOrLayout=render_view, location=16, ImageResolution=[846, 870],
+    os.makedirs('/home/innerbergerm@hhmi.org/Projects/janelia/embryo-harmonics/images/isosurfaces_420', exist_ok=True)
+    SaveScreenshot(filename=f'/home/innerbergerm@hhmi.org/Projects/janelia/embryo-harmonics/images/isosurfaces_420/{harmonic_name}_iso.png', viewOrLayout=render_view, location=16, ImageResolution=[846, 870],
                    TransparentBackground=1)
 
 
