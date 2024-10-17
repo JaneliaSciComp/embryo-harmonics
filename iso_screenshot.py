@@ -8,83 +8,44 @@ from paraview.simple import *
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
 
-# create a new 'XML Unstructured Grid Reader'
+# Load data and select the array to visualize
 data = XMLUnstructuredGridReader(registrationName='data', FileName=['/home/innerbergerm@hhmi.org/Projects/janelia/embryo-harmonics/results/data_420.vtu'])
-
-# Properties modified on data_420vtu
 data.PointArrayStatus = ['harmonic_013']
 data.TimeArray = 'None'
 
-# get active view
+# Get active view
 render_view = GetActiveViewOrCreate('RenderView')
-
-# show data in view
-data_display = Show(data, render_view, 'UnstructuredGridRepresentation')
-
-# trace defaults for the display properties.
-data_display.Representation = 'Surface'
-
-# show data in view
-data_display = Show(data, render_view, 'UnstructuredGridRepresentation')
-
-# Properties modified on data_420vtuDisplay
-data_display.ComputePointNormals = 1
-
-# Properties modified on data_420vtuDisplay
-data_display.Opacity = 0.1
-
-# create a new 'Contour'
-contour = Contour(registrationName='Contour1', Input=data)
-
-# Properties modified on contour1
-contour.Isosurfaces = [-0.0014258998800048756, -0.001109038437013861, -0.0007921769940228464, -0.00047531555103183173, -0.0001584541080408171, 0.00015840733495019752, 0.00047526877794121214, 0.000792130220932227, 0.0011089916639232414, 0.0014258531069142558, 0.0017427145499052707]
-
-# show data in view
-contour_display = Show(contour, render_view, 'GeometryRepresentation')
-
-# trace defaults for the display properties.
-contour_display.Representation = 'Surface'
-
-# hide color bar/color legend
-contour_display.SetScalarBarVisibility(render_view, False)
-
-# hide data in view
-Hide(data, render_view)
-
-# get color transfer function/color map for 'harmonic_013'
-lookup_table = GetColorTransferFunction('harmonic_013')
-
-# Rescale transfer function
-lookup_table.RescaleTransferFunction(-0.001109038437013861, 0.0017427145499052707)
-
-# get opacity transfer function/opacity map for 'harmonic_013'
-opacity_lut = GetOpacityTransferFunction('harmonic_013')
-
-# Rescale transfer function
-opacity_lut.RescaleTransferFunction(-0.001109038437013861, 0.0017427145499052707)
-
-# Properties modified on harmonic_013LUT
-lookup_table.EnableOpacityMapping = 1
-
-# Properties modified on harmonic_013PWF
-opacity_lut.Points = [-0.001109038437013861, 0.8035714626312256, 0.5, 0.0, 0.0002598029968794435, 0.361607164144516, 0.5, 0.0, 0.0017427145499052704, 0.8035714626312256, 0.5, 0.0]
-
-# set active source
-SetActiveSource(data)
-
-# set active source
-SetActiveSource(data)
-
-# Hide orientation axes
 render_view.OrientationAxesVisibility = 0
 
-# set active source
+# Show surface of the data, smooth it, and make it transparent
+data_display = Show(data, render_view, 'UnstructuredGridRepresentation')
+data_display.Representation = 'Surface'
+data_display.ComputePointNormals = 1
+data_display.Opacity = 0.1
+
+# Create a contour with some isosurfaces
+contour = Contour(registrationName='Contour1', Input=data)
+contour.Isosurfaces = [-0.0014258998800048756, -0.001109038437013861, -0.0007921769940228464, -0.00047531555103183173, -0.0001584541080408171, 0.00015840733495019752, 0.00047526877794121214, 0.000792130220932227, 0.0011089916639232414, 0.0014258531069142558, 0.0017427145499052707]
+
+# Show contour, make it a surface, and hide the color bar
+contour_display = Show(contour, render_view, 'GeometryRepresentation')
+contour_display.Representation = 'Surface'
+contour_display.SetScalarBarVisibility(render_view, False)
+
+# Set active source
 SetActiveSource(contour)
 
-# get layout
-layout1 = GetLayout()
+# Get color and opacity map for contour
+lookup_table = GetColorTransferFunction('harmonic_013')
+lookup_table.RescaleTransferFunction(-0.001109038437013861, 0.0017427145499052707)
+lookup_table.EnableOpacityMapping = 1
 
-# layout/tab size in pixels
+opacity_lut = GetOpacityTransferFunction('harmonic_013')
+opacity_lut.RescaleTransferFunction(-0.001109038437013861, 0.0017427145499052707)
+opacity_lut.Points = [-0.001109038437013861, 0.8035714626312256, 0.5, 0.0, 0.0002598029968794435, 0.361607164144516, 0.5, 0.0, 0.0017427145499052704, 0.8035714626312256, 0.5, 0.0]
+
+# Get layout and set size
+layout1 = GetLayout()
 layout1.SetSize(846, 870)
 
 # current camera placement for renderView1
