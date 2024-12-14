@@ -38,14 +38,14 @@ path = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_s
 h5file = h5py.File(path, 'r')
 
 # %%
-k = 100
-time_steps = range(420, 621, 5)
+k = 300
 embryo_model_loader = EmbryoModelLoader(h5file)
 root = os.path.normpath(os.path.join(os.getcwd(), '..', 'results'))
 os.makedirs(root, exist_ok=True)
 
 # %%
-for time_step in tqdm(time_steps):
+for time_step in tqdm(embryo_model_loader.time_steps):
+    logger.info("Processing time step %d", time_step)
     embryo_model = embryo_model_loader.load(time_step)
     mesh = generate_embryo_mesh(embryo_model, mesh_size=5)
     pv_data, metrics = compute_harmonics(mesh, k=k, boundary_condition="neumann", store_dirichlet_densities=True)
