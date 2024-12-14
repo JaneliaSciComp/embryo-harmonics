@@ -46,8 +46,7 @@ class EmbryoModelLoader:
 
         # Initialize all time steps
         # The data starts at time 420 and then continues with stride 1
-        time = [419 + i for i in range(1, len(h5file))]
-        self._time_to_index = {time[i]: i + 1 for i in range(len(time))}
+        self._time = [420 + i for i in range(len(h5file) + 1)]
 
     @property
     def time_steps(self) -> List[int]:
@@ -55,7 +54,7 @@ class EmbryoModelLoader:
         Get the time steps in the HDF5 file.
         :return: The time steps in the HDF5 file
         """
-        return list(self._time_to_index.keys())
+        return list(self._time)
 
     def load(
             self,
@@ -66,13 +65,12 @@ class EmbryoModelLoader:
         :param time_step: Which time step to load
         :return: An :class:`EmbryoModel` object containing the geometry data
         """
-        _logger.info("Loading averaged model for time step %s from '%s'", time_step, self.h5file.filename)
+        _logger.info("Loading averaged model for time step %d from '%s'", time_step, self.h5file.filename)
         try:
-            i = self._time_to_index[time_step]
+            model = self.h5file[f"avg_model_{time_step:03d}"]
         except KeyError as e:
             raise ValueError(f"Time step {time_step} not found in the HDF5 file") from e
 
-        model = self.h5file[f"avg_model_{i:03d}"]
         names = [s.decode('utf-8') for s in model["names"][:]]
 
         central_spline = model["central_spline"]
