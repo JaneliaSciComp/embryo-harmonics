@@ -25,6 +25,7 @@ from embryoharmonics import *
 
 # %%
 # Set up logging
+os.makedirs(os.path.join(os.getcwd(), '..', 'logs'), exist_ok=True)
 logger = logging.getLogger("embryoharmonics")
 logger.setLevel(logging.INFO)
 timestr = time.strftime("%Y%m%d-%H%M%S")

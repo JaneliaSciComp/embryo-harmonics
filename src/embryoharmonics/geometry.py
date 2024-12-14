@@ -46,7 +46,7 @@ class EmbryoModelLoader:
 
         # Initialize all time steps
         # The data starts at time 420 and then continues with stride 1
-        self._time = [420 + i for i in range(len(h5file) + 1)]
+        self._time = [420 + i for i in range(len(h5file))]
 
     @property
     def time_steps(self) -> List[int]:

@@ -27,6 +27,7 @@ from embryoharmonics._utils import all_harmonic_names
 
 # %%
 # Set up logging
+os.makedirs(os.path.join(os.getcwd(), '..', 'logs'), exist_ok=True)
 logger = logging.getLogger("embryoharmonics")
 logger.setLevel(logging.INFO)
 timestr = time.strftime("%Y%m%d-%H%M%S")
@@ -36,10 +37,10 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 # %%
-path = "/home/innerbergerm@hhmi.org/big-data/worm-geometry/4D_transcriptome.mat"
+path = "/Users/innerbergerm/Data/worm-geometry/4D_transcriptome.mat"
 h5file = h5py.File(path, 'r')
 gene_data_loader = GeneDataLoader(h5file)
-time_steps = range(420, 621, 5)
+time_steps = range(420, 841)
 
 # %%
 root = os.path.normpath(os.path.join(os.getcwd(), '..', 'results'))
