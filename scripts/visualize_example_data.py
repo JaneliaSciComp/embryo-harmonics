@@ -50,7 +50,7 @@ ax.invert_yaxis()
 plt.xlabel("x")
 plt.ylabel("y (inverted!)")
 
-starting_points = np.row_stack([spline(t[0]) for spline in embryo_model.transverse_splines])
+starting_points = np.vstack([spline(t[0]) for spline in embryo_model.transverse_splines])
 ax.scatter(starting_points[:, 0], starting_points[:, 1])
 for i in range(32):
     ax.text(starting_points[i, 0], starting_points[i, 1], str(i + 1))
