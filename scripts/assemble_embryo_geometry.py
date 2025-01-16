@@ -1,26 +1,26 @@
 # %%
 import h5py
-import netgen.occ as occ
+from netgen import occ
 from netgen.webgui import Draw
 
 from embryoharmonics.geometry import _get_spline_surface, EmbryoModelLoader
 from embryoharmonics.meshing import _convert_to_volume_mesh
 
 # %%
-path = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_samples_2024_12_04.h5"
-h5file = h5py.File(path, 'r')
+PATH = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_samples_2024_12_04.h5"
+h5file = h5py.File(PATH, 'r')
 
 # %%
 # visualize all splines for given time step
-time_step = 420
+TIME_STEP = 420
 embryo_model_loader = EmbryoModelLoader(h5file)
-embryo_model = embryo_model_loader.load(time_step)
+embryo_model = embryo_model_loader.load(TIME_STEP)
 
 # %%
 # Generate surface splines (using fewer interpolations points seems to yield better results because of numerical instabilities)
-n_interpolation = 32
+N_INTERPOLATION = 32
 n_splines = embryo_model.n_transverse_splines
-spline_surfaces = [_get_spline_surface(embryo_model, n_interpolation, i) for i in range(n_splines)]
+spline_surfaces = [_get_spline_surface(embryo_model, N_INTERPOLATION, i) for i in range(n_splines)]
 colors = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]  # [R, G, B]
 for i, surf in enumerate(spline_surfaces):
     surf.col = colors[i % 3]

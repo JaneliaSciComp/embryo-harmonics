@@ -11,25 +11,26 @@
 #     language: python
 #     name: python3
 # ---
-from tokenize import generate_tokens
 
 # %%
 import h5py
 import numpy as np
 from ngsolve import H1, dx, grad, BilinearForm, GridFunction
 from ngsolve.webgui import Draw
+import scipy.sparse as sp
+import matplotlib.pyplot as plt
 
 from embryoharmonics import EmbryoModelLoader, generate_embryo_mesh
 from scripts.assemble_embryo_geometry import embryo_model_loader
 
 # %%
-path = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_samples_2024_12_04.h5"
-h5file = h5py.File(path, 'r')
+PATH = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_samples_2024_12_04.h5"
+h5file = h5py.File(PATH, 'r')
 
 # %%
-time_step = 420
+TIME_STEP = 420
 embryo_model_loader = EmbryoModelLoader(h5file)
-embryo_model = embryo_model_loader.load(time_step)
+embryo_model = embryo_model_loader.load(TIME_STEP)
 mesh = generate_embryo_mesh(embryo_model, mesh_size=5)
 print(f"Number of elements: {mesh.ne}")
 
@@ -51,6 +52,12 @@ m.Assemble()
 
 # %%
 def to_scipy_csr(blf, mask):
+    """
+    Convert a NGSolve bilinear form to a scipy sparse matrix in CSR format.
+    :param blf: NGSolve bilinear form
+    :param mask: Boolean mask for free dofs
+    :return: Sparse matrix in CSR format
+    """
     row, col, val = blf.mat.COO()
     # filter free dofs
     sparse = sp.csr_matrix((val, (row, col)))
@@ -59,7 +66,6 @@ def to_scipy_csr(blf, mask):
 
 # %%
 # Export stiffness and mass matrix to scipy
-import scipy.sparse as sp
 mask = np.array([free for free in fes.FreeDofs()])
 stiffness = to_scipy_csr(a, mask)
 mass = to_scipy_csr(m, mask)
@@ -91,7 +97,6 @@ settings = {"camera": {"euler_angles": [-90, 0, 0]}}
 Draw(u, clipping=clipping, settings=settings)
 
 # %%
-import matplotlib.pyplot as plt
 plt.spy(stiffness, marker='.', alpha=0.1)
 plt.show()
 

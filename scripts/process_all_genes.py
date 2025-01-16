@@ -37,8 +37,8 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 # %%
-path = "/Users/innerbergerm/Data/worm-geometry/4D_transcriptome.mat"
-h5file = h5py.File(path, 'r')
+PATH = "/Users/innerbergerm/Data/worm-geometry/4D_transcriptome.mat"
+h5file = h5py.File(PATH, 'r')
 gene_data_loader = GeneDataLoader(h5file)
 time_steps = range(420, 841)
 
@@ -60,22 +60,22 @@ all_harmonics = all_harmonic_names(first_geometry)
 
 # %%
 def write_meta_data(file):
-    # Write gene names (same format as matlab char arrays are stored in mat files: an array of space padded ascii-chars) 
+    # Write gene names (same format as matlab char arrays are stored in mat files: an array of space padded ascii-chars)
     max_gene_name_length = max(len(name) for name in gene_data_loader.gene_names)
     gene_names = [name.ljust(max_gene_name_length).encode('ascii') for name in gene_data_loader.gene_names]
     gene_names = np.array([np.frombuffer(name, dtype=np.uint8) for name in gene_names]).T.astype(np.uint16)
     file.create_dataset('gene_names', data=gene_names)
-    
+
     # Write tissue names (same format as matlab char arrays are stored in mat files: an array of space padded ascii-chars)
     max_tissue_name_length = max(len(name) for name in gene_data_loader.tissue_names)
     tissue_names = [name.ljust(max_tissue_name_length).encode('ascii') for name in gene_data_loader.tissue_names]
     tissue_names = np.array([np.frombuffer(gene_names[:, i], dtype=np.uint8) for i in range(len(tissue_names))]).T.astype(np.uint16)
     file.create_dataset('tissue_names', data=tissue_names)
-    
+
     # Write all time points
     time_points = np.array(list(time_steps))
     file.create_dataset('time_points', data=time_points)
-    
+
     # Write harmonic names to match coefficients to harmonics
     harmonic_names = [name.encode('ascii') for name in all_harmonics]
     harmonic_names = np.array([np.frombuffer(name, dtype=np.uint8) for name in harmonic_names]).T.astype(np.uint16)
@@ -104,7 +104,7 @@ def write_data(file):
             gene_coeff[i, j, :] = eigen_coefficients[name]
         for j, name in enumerate(tissue_names):
             tissue_coeff[i, j, :] = eigen_coefficients[name]
-            
+
     file.create_dataset('gene_coefficients', data=gene_coeff)
     file.create_dataset('tissue_coefficients', data=tissue_coeff)
 
@@ -114,5 +114,3 @@ def write_data(file):
 with h5py.File(os.path.join(root, 'eigen_coefficients.h5'), 'w') as target_file:
     write_meta_data(target_file)
     write_data(target_file)
-
-# %%

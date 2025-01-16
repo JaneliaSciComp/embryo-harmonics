@@ -13,8 +13,8 @@ logger.setLevel(logging.INFO)
 
 # %%
 root = os.path.normpath(os.path.join(os.getcwd(), '..', 'results'))
-timestep = 620
-path = os.path.join(root, f"metrics_{timestep:03d}.csv")
+TIME_STEP = 620
+path = os.path.join(root, f"metrics_{TIME_STEP:03d}.csv")
 data = np.genfromtxt(path, delimiter=",", names=True)
 
 print(data.dtype.names)
