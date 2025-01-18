@@ -30,14 +30,14 @@ print(f"Later timestep bounds: {mesh_later.bounds}")
 
 # %%
 def transform_mesh(
-        source: pv.PolyData,
-        target: pv.PolyData,
+        source: pv.UnstructuredGrid,
+        target: pv.UnstructuredGrid,
         *,
         fudge_factor: float = 1e-4,
 ) -> None:
     """
     Transform the source mesh to a target mesh (both are supposed to be embryo geometries).
-    :param source: a mesh
+    :param source: a mesh that is transformed in place to match the target geometry
     :param target: a second mesh with a kind of similar shape
     :param fudge_factor: a small number to make sure the transformed source stays inside the target
     """
