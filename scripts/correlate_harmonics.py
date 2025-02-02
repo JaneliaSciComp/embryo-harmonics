@@ -13,8 +13,9 @@
 # ---
 
 # %%
-import pyvista as pv
 import numpy as np
+import matplotlib.pyplot as plt
+import pyvista as pv
 
 # %%
 mesh_earlier = pv.read( "/Users/innerbergerm/Data/worm-geometry/example-geometries/data_420.vtu")
@@ -89,5 +90,43 @@ def transform_mesh(
 transform_mesh(mesh_earlier, mesh_later)
 print(f"Earlier timestep bounds after transformation: {mesh_earlier.bounds}")
 print(f"Later timestep bounds after transformation: {mesh_later.bounds}")
+
+# %%
+# Weed out some of the harmonics for testing purposes
+names_to_keep = [f"harmonic_{i:03}" for i in range(100)]
+for name in mesh_earlier.array_names:
+    if name not in names_to_keep:
+        mesh_earlier.point_data.remove(name)
+        mesh_later.point_data.remove(name)
+resampled = mesh_earlier.sample(mesh_later)
+
+# %%
+# Compare harmonics visually
+p = pv.Plotter(shape=(1, 3))
+name = "harmonic_013"
+p.add_mesh(mesh_later, scalars=name)
+p.subplot(0, 1)
+p.add_mesh(resampled, scalars=name)
+p.subplot(0, 2)
+p.add_mesh(mesh_earlier, scalars=name)
+p.link_views()
+p.show()
+
+# %%
+# Compare harmonics numerically
+# TODO: the dot product should feature the mass matrix; refactor so that mass is always available
+dot_products = np.zeros((len(names_to_keep), len(names_to_keep)))
+for i, name_i in enumerate(names_to_keep):
+    for j, name_j in enumerate(names_to_keep):
+        dot_products[i, j] = np.dot(resampled[name_i], mesh_earlier[name_j])
+plt.imshow(dot_products)
+
+# %%
+# Find rearrangement of harmonics between time steps, e.g., 13 and 14 are swapped
+# TODO: some harmonics have a different sign in different time steps -> invert coefficients!
+row_max_idx = np.argmax(np.abs(dot_products), axis=1)
+for i, idx in enumerate(row_max_idx):
+    if i != idx:
+        print(f"{i:03} -> {idx:03}")
 
 # %%
