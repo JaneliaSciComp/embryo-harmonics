@@ -2,12 +2,12 @@ name: embryo-harmonics
 channels:
   - conda-forge
 dependencies:
-  - python ==3.10
+  - python==3.12
   - h5py
-  - numpy
+  - numpy==2.2.0
   - scipy
   - matplotlib
-  - pyvista
+  - pyvista==0.44.2 
   - trame
   - trame-vtk
   - trame-vuetify
@@ -16,5 +16,6 @@ dependencies:
   - jupytext
   - pip
   - pip:
-    - ngsolve
+    - ngsolve==6.2.2406
     - webgui_jupyter_widgets
+    - -e .
