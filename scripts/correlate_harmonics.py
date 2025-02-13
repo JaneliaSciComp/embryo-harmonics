@@ -85,11 +85,9 @@ def transform_mesh(
             r_factor[i] = r_surf_trg / r_surf_src
 
     source.points[:, :2] *= r_factor[:, None] * (1 - fudge_factor)
-    print(r_factor)
 
 transform_mesh(mesh_earlier, mesh_later)
 print(f"Earlier timestep bounds after transformation: {mesh_earlier.bounds}")
-print(f"Later timestep bounds after transformation: {mesh_later.bounds}")
 
 # %%
 # Weed out some of the harmonics for testing purposes
@@ -99,18 +97,6 @@ for name in mesh_earlier.array_names:
         mesh_earlier.point_data.remove(name)
         mesh_later.point_data.remove(name)
 resampled = mesh_earlier.sample(mesh_later)
-
-# %%
-# Compare harmonics visually
-p = pv.Plotter(shape=(1, 3))
-name = "harmonic_013"
-p.add_mesh(mesh_later, scalars=name)
-p.subplot(0, 1)
-p.add_mesh(resampled, scalars=name)
-p.subplot(0, 2)
-p.add_mesh(mesh_earlier, scalars=name)
-p.link_views()
-p.show()
 
 # %%
 # Compare harmonics numerically
@@ -124,9 +110,28 @@ plt.imshow(dot_products)
 # %%
 # Find rearrangement of harmonics between time steps, e.g., 13 and 14 are swapped
 # TODO: some harmonics have a different sign in different time steps -> invert coefficients!
-row_max_idx = np.argmax(np.abs(dot_products), axis=1)
-for i, idx in enumerate(row_max_idx):
+earlier_to_later = np.argmax(np.abs(dot_products), axis=1)
+for i, idx in enumerate(earlier_to_later):
     if i != idx:
         print(f"{i:03} -> {idx:03}")
+
+# %%
+# Compare harmonics visually (13 is swapped with 14, but 13->14 has a wrong sign)
+earlier_index = 14
+later_index = earlier_to_later[earlier_index]
+later_name = f"harmonic_{later_index:03}"
+earlier_name = f"harmonic_{earlier_index:03}"
+
+p = pv.Plotter(shape=(1, 3))
+# Later timestep
+p.add_mesh(mesh_later, scalars=later_name)
+p.subplot(0, 1)
+# Earlier timestep resampled to later
+p.add_mesh(resampled, scalars=later_name)
+p.subplot(0, 2)
+# Earlier timestep
+p.add_mesh(mesh_earlier, scalars=earlier_name)
+p.link_views()
+p.show()
 
 # %%
