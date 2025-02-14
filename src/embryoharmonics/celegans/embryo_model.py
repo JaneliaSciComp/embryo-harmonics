@@ -2,8 +2,12 @@ import logging
 import math
 
 import numpy as np
-from netgen import occ
 from scipy.interpolate import CubicSpline
+from scipy.spatial import KDTree
+from netgen import occ
+from netgen.meshing import FaceDescriptor, Element2D
+from netgen.meshing import Mesh as NetgenMesh
+from ngsolve import Mesh as NgsMesh
 
 
 _logger = logging.getLogger(__name__)
@@ -11,40 +15,86 @@ _logger = logging.getLogger(__name__)
 
 class EmbryoModel:
     """
-    Class representing the spline data for an embryo model. The model consists of a central spline (which should be
-    straight), and a number of transverse splines that make up the surface of the embryo.
-    The splines are defined on a common domain and the data for the splines was collected at certain points (called
-    seam cells) on the lateral sides of the embryo.
+    Class representing the spline data for an embryo model. The model consists
+    of a central spline (which should be straight), and a number of transverse
+    splines that make up the surface of the embryo.
+    The splines are defined on a common (1D) domain; the data for the splines
+    was collected at certain points (called seam cells) on the lateral sides of
+    the embryo.
     """
     def __init__(self, seam_cells, spline_domain, central_coordinates, transverse_coordinates):
         self.seam_cells = {name: index for index, name in enumerate(seam_cells)}
         self.spline_domain = spline_domain
         self.central_spline = CubicSpline(spline_domain, central_coordinates)
-        self.transverse_splines = [CubicSpline(spline_domain, coordinates) for coordinates in transverse_coordinates]
+        self.transverse_splines = [
+            CubicSpline(spline_domain, coordinates)
+            for coordinates in transverse_coordinates
+        ]
+
 
     @property
     def n_seam_cells(self):
+        """The number of seam cells."""
         return len(self.seam_cells)
+
 
     @property
     def n_transverse_splines(self):
+        """The number of transverse splines delimiting the embryo surface."""
         return len(self.transverse_splines)
+
+
+    def generate_mesh(
+            self,
+            n_interpolation: int = 32,
+            mesh_size: float = 5.0
+    ) -> NgsMesh:
+        """
+        Generate a volume mesh from the embryo model.
+        :param n_interpolation: The number of points to use for interpolating
+            the transverse splines for generating the mesh
+        :param mesh_size: The maximum mesh size
+        :return: A volume mesh of the embryo model
+        """
+        _logger.debug("Generating mesh for embryo model")
+        geometry = _assemble_embryo_geometry(self, n_interpolation)
+        return _mesh_embryo_geometry(geometry, mesh_size)
+
+
+def _mesh_embryo_geometry(
+        worm_geometry: occ.Compound,
+        mesh_size: float
+) -> NgsMesh:
+    """
+    Mesh the geometry of an embryo.
+    :param worm_geometry: The geometry of the embryo to mesh
+    :param mesh_size: The maximum mesh size
+    :return: The volume mesh of the embryo geometry
+    """
+    geo = occ.OCCGeometry(worm_geometry)
+    surface_mesh = geo.GenerateMesh(maxh=mesh_size)
+    vol_mesh, _ = _convert_to_volume_mesh(surface_mesh, mesh_size, mesh_size / 10)
+    return NgsMesh(vol_mesh)
 
 
 def _assemble_embryo_geometry(
         embryo_model: EmbryoModel,
-        n_interpolation: int = 32
+        n_interpolation: int
 ) -> occ.Compound:
     """
     Assemble the geometry of the embryo from the given embryo model.
     :param embryo_model: The embryo model
-    :param n_interpolation: The number of points to use for the interpolation
+    :param n_interpolation: The number of points to use for interpolating the
+        transverse splines for generating the mesh
     :return: The NGSolve-OCC geometry representing the embryo
     """
 
     # Generate the mantle of the worm
     n_splines = embryo_model.n_transverse_splines
-    spline_surfaces = [_get_spline_surface(embryo_model, n_interpolation, i) for i in range(n_splines)]
+    spline_surfaces = [
+        _get_spline_surface(embryo_model, n_interpolation, i)
+        for i in range(n_splines)
+    ]
     mantle = occ.Compound(spline_surfaces)
 
     # Generate the caps on the anterior and posterior end
@@ -57,13 +107,84 @@ def _assemble_embryo_geometry(
     return total_surface
 
 
+def _convert_to_volume_mesh(
+        surface_mesh: NetgenMesh,
+        mesh_size: float,
+        max_node_distance: float = None
+) -> tuple[NetgenMesh, dict[int, int]]:
+    """
+    Convert a surface mesh to a volume mesh by adding a single domain inside the
+    surface and no domain outside. If the surface mesh is not closed (i.e.,
+    meshing fails), close nodes can be identified by a maximum distance
+    threshold and merged to close it.
+    :param surface_mesh: The surface mesh to convert
+    :param mesh_size: The maximum mesh size
+    :param max_node_distance: Maximum distance between nodes to identify close
+        nodes; if None, no nodes are merged
+    :return: The volume mesh and a mapping from old node indices to new ones
+    """
+    n_nodes = len(surface_mesh.Points())
+    node_is_unique = np.ones(n_nodes, dtype=bool)
+    new_mesh = NetgenMesh()
+    old_to_new = {}
+
+    _logger.debug("Converting surface mesh with %d nodes to volume mesh", n_nodes)
+
+    if max_node_distance is not None:
+        # Find all nodes that are too close to each other ("doppelgängers")
+        kdtree = KDTree(surface_mesh.Coordinates())
+        dist = kdtree.sparse_distance_matrix(
+            kdtree,
+            max_distance=max_node_distance,
+            output_type='ndarray'
+        )
+
+        # Remove self-distances and compress i->j / j->i pairs
+        dist = dist[dist['i'] != dist['j']]
+        pairs = np.vstack([dist['i'], dist['j']])
+        pairs = np.sort(pairs, axis=0)
+        pairs = np.unique(pairs, axis=1)
+        _logger.debug("Found %d pairs of close nodes to identify", len(pairs[0]))
+
+        # Mark all nodes that have a doppelgänger
+        node_is_unique[pairs[0]] = False
+        node_is_unique[pairs[1]] = False
+
+        # Copy non-unique nodes
+        for i, j in zip(pairs[0], pairs[1]):
+            # Identify doppelgängers in new mesh (node indices are 1-based)
+            new_node = new_mesh.Add(surface_mesh[i + 1])
+            old_to_new[i + 1] = new_node
+            old_to_new[j + 1] = new_node
+
+    # Copy unique nodes
+    for i in range(n_nodes):
+        if node_is_unique[i]:
+            # Node indices are 1-based
+            old_to_new[i + 1] = new_mesh.Add(surface_mesh[i + 1])
+
+    # Create a face descriptor that is used for all elements
+    # (one single surface with one domain inside and no domain outside)
+    face_descriptor = new_mesh.Add(FaceDescriptor(surfnr=1, domin=1, domout=0, bc=1))
+
+    # Copy elements
+    for e in surface_mesh.Elements2D():
+        new_mesh.Add(Element2D(face_descriptor, [old_to_new[v] for v in e.vertices]))
+
+    # Generate volume mesh from surface
+    new_mesh.GenerateVolumeMesh(maxh=mesh_size)
+    _logger.debug("Converted surface mesh to volume mesh with %d nodes and %d elements",
+                  len(new_mesh.Points()), new_mesh.ne)
+    return new_mesh, old_to_new
+
+
 def _rotate_around_z_and_x(
         points: np.ndarray,
         angle: float
 ) -> np.ndarray:
     """
-    Rotate a set of points (specifying a spline surface) first around the z-axis by a given angle and then around the
-    x-axis by -90 degrees.
+    Rotate a set of points (specifying a spline surface) first around the z-axis
+    by a given angle and then around the x-axis by -90 degrees.
     :param points: The points to be rotated
     :param angle: The angle by which to rotate in the xy-plane in deg
     :return: Coordinates of the rotated points
@@ -87,13 +208,16 @@ def _get_spline_surface(
     Create an NGSolve-OCC surface from two neighboring splines of the embryo geometry.
     The resulting surface is the one between the i-th transverse spline and its clockwise neighbor.
     :param embryo_model: The embryo model containing the splines
-    :param n: The number of points to use for the interpolation (too many points can lead to numerical instabilities)
+    :param n: The number of points to use for the interpolation (too many points
+        can lead to numerical instabilities)
     :param i: The index of the transverse spline
     :return: An NGSolve-OCC surface
     :raises ValueError: If the spline index is out of bounds
     """
     if i < 0 or i >= embryo_model.n_transverse_splines:
-        raise ValueError(f"Invalid spline index {i} (out of {embryo_model.n_transverse_splines} splines)")
+        raise ValueError(
+            f"Invalid spline index {i} (out of {embryo_model.n_transverse_splines} splines)"
+        )
 
     domain = embryo_model.spline_domain
     t = np.linspace(domain[0], domain[-1], n)
@@ -104,7 +228,8 @@ def _get_spline_surface(
     x1 = spline1(t)
     x2 = spline2(t)
 
-    # Rotate so that the domain of the spline is [-a, a] x [0, b] x {0} and the z values represent its height
+    # Rotate so that the domain of the spline is [-a, a] x [0, b] x {0} and the
+    # z values represent its height
     midpoint_angle = (2 * i + 1) / (2 * embryo_model.n_transverse_splines) * 180
     angle = - (midpoint_angle + 90)
     xr1 = _rotate_around_z_and_x(x1, angle)
