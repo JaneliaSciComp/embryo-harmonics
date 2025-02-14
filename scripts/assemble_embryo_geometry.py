@@ -3,8 +3,9 @@ import h5py
 from netgen import occ
 from netgen.webgui import Draw
 
-from embryoharmonics.celegans.embryo_model import _get_spline_surface, EmbryoModelLoader
+from embryoharmonics.celegans import EmbryoModelLoader
 from embryoharmonics.celegans.meshing import _convert_to_volume_mesh
+from embryoharmonics.celegans.embryo_model import _get_spline_surface
 
 # %%
 PATH = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_samples_2024_12_04.h5"

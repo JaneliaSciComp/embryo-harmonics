@@ -1,7 +1,6 @@
 import logging
 import math
 
-import h5py
 import numpy as np
 from netgen import occ
 from scipy.interpolate import CubicSpline
@@ -56,20 +55,6 @@ def _assemble_embryo_geometry(
 
     total_surface = occ.Compound([mantle, anterior_cap, posterior_cap])
     return total_surface
-
-
-def load_measurement(
-        h5file: h5py.File
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Load the length and volume measurements from the given HDF5 file.
-    :param h5file: The HDF5 file containing the measurements
-    :return: Length and volume measurements as numpy arrays
-    """
-    _logger.info("Loading measurements from '%s'", h5file.filename)
-    length = h5file["measurements/length"][:]
-    volume = h5file["measurements/volume"][:]
-    return length, volume
 
 
 def _rotate_around_z_and_x(

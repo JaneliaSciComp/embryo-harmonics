@@ -74,7 +74,12 @@ class EmbryoModelLoader:
             cleaned_data = _convert_to_ndarray(raw_data)
             transverse_coordinates.append(cleaned_data)
 
-        return EmbryoModel(seam_cell_names, spline_domain, central_coordinates, transverse_coordinates)
+        return EmbryoModel(
+            seam_cell_names,
+            spline_domain,
+            central_coordinates,
+            transverse_coordinates
+        )
 
 
 def _convert_to_ndarray(
