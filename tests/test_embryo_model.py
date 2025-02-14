@@ -20,3 +20,13 @@ def test_model_has_correct_number_of_properties(time_step):
 
         assert len(embryo_model.transverse_splines) == 32
         assert len(embryo_model.seam_cells) == 11
+
+
+@pytest.mark.slow
+def test_model_can_generate_mesh():
+    """Load the embryo model and check that it can generate a mesh."""
+    with EmbryoModelLoader(TEST_FILE) as embryo_model_loader:
+        embryo_model = embryo_model_loader.load(420)
+
+        mesh = embryo_model.generate_mesh()
+        assert mesh.ne > 0
