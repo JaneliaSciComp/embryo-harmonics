@@ -8,7 +8,7 @@ from netgen.meshing import FaceDescriptor, Element2D
 from netgen.meshing import Mesh as NetgenMesh
 from ngsolve import Mesh as NgsMesh
 
-from embryoharmonics.geometry import EmbryoModel, _get_spline_surface
+from embryoharmonics.celegans.embryo_model import EmbryoModel, _get_spline_surface
 
 
 _logger = logging.getLogger(__name__)
