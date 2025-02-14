@@ -1,7 +1,4 @@
 # %%
-# %matplotlib qt
-
-# %%
 import h5py
 import numpy as np
 from matplotlib import pyplot as plt
@@ -10,14 +7,14 @@ from embryoharmonics import EmbryoModelLoader
 
 # %%
 # Open HDF5 file
-path = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_samples_2024_12_04.h5"
-h5file = h5py.File(path, 'r')
+PATH = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_samples_2024_12_04.h5"
+h5file = h5py.File(PATH, 'r')
 
 # %%
 # Load all splines for given time step
-time_step = 420
+TIME_STEP = 420
 embryo_model_loader = EmbryoModelLoader(h5file)
-embryo_model = embryo_model_loader.load(time_step)
+embryo_model = embryo_model_loader.load(TIME_STEP)
 
 # %%
 # Seam cells are the marker cells on the left and right of the embryo by which the straightening was done
@@ -58,5 +55,3 @@ for i in range(32):
 ax.plot(0, 0, marker='$\\bigotimes$', markersize=15)
 ax.text(3, 0, "z-axis")
 plt.show()
-
-# %%

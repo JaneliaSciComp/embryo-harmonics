@@ -35,8 +35,8 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 # %%
-path = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_samples_2024_12_04.h5"
-h5file = h5py.File(path, 'r')
+PATH = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_samples_2024_12_04.h5"
+h5file = h5py.File(PATH, 'r')
 
 # %%
 k = 300

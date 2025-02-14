@@ -36,7 +36,7 @@ from ngsolve.webgui import Draw
 mesh = Mesh(unit_square.GenerateMesh(maxh=0.05))
 V = H1(mesh, order=1)
 Q = FESpace("number", mesh)
-fes = V * Q 
+fes = V * Q
 
 # %%
 # Formulate saddle-point problem
@@ -59,9 +59,7 @@ solution = GridFunction(fes)
 solution.vec.data = a.mat.Inverse(fes.FreeDofs()) * f.vec
 
 # %%
-# Visualize the function part of the solution 
+# Visualize the function part of the solution
 print(f"Integral of u: {Integrate(solution.components[0], mesh)}")
 print(f"Value of Lagrange multiplier: {solution.components[1].vec}")
 Draw(solution.components[0])
-
-# %%

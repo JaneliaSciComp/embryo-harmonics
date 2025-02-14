@@ -1,6 +1,20 @@
 [project]
 name = "embryoharmonics"
 version = "0.1.0"
+description = "Analyzing biological data using harmonical analysis"
+requires-python = ">= 3.12"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+  {name = "Michael Innerberger", email = "innerbergerm@hhmi.org"},
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.jupytext.formats]
 "notebooks/" = "ipynb"
