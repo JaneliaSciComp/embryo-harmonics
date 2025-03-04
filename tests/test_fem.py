@@ -28,7 +28,7 @@ def linear_function(x):
     return x.sum(axis=1)
 
 
-@pytest.mark.parametrize("dim", [3])
+@pytest.mark.parametrize("dim", [2, 3])
 def test_mass_matrix_integrates_constant(dim):
     """The mass matrix integrates constant functions correctly."""
     mesh, vol = create_box_mesh(dim)
@@ -40,7 +40,7 @@ def test_mass_matrix_integrates_constant(dim):
     assert (mass_matrix @ fun_value).sum() == pytest.approx(constant * vol, rel=1e-2)
 
 
-@pytest.mark.parametrize("dim", [3])
+@pytest.mark.parametrize("dim", [2, 3])
 def test_mass_matrix_integrates_linear(dim):
     """The mass matrix integrates linear functions correctly."""
     mesh, vol = create_box_mesh(dim)
@@ -52,7 +52,7 @@ def test_mass_matrix_integrates_linear(dim):
     assert (mass_matrix @ fun_value).sum() == pytest.approx(expected, rel=1e-2)
 
 
-@pytest.mark.parametrize("dim", [3])
+@pytest.mark.parametrize("dim", [2, 3])
 def test_stiffness_matrix_integrates_constant(dim):
     """The stiffness matrix integrates constant functions correctly."""
     mesh, _ = create_box_mesh(dim)
@@ -64,14 +64,13 @@ def test_stiffness_matrix_integrates_constant(dim):
     assert (stiffness_matrix @ fun_value).sum() == pytest.approx(0, abs=1e-2)
 
 
-@pytest.mark.parametrize("dim", [3])
+@pytest.mark.parametrize("dim", [2, 3])
 def test_stiffness_matrix_integrates_linear(dim):
     """The stiffness matrix integrates linear functions correctly."""
     mesh, vol = create_box_mesh(dim)
 
     _, stiffness_matrix = compute_mass_and_stiffness(mesh)
     fun_value = linear_function(mesh.points)
-    print(stiffness_matrix)
 
-    expected = 3 * vol
+    expected = dim * vol
     assert fun_value.dot(stiffness_matrix @ fun_value) == pytest.approx(expected, abs=1e-2)
