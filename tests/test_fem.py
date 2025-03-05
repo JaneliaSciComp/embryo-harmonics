@@ -14,8 +14,11 @@ def create_box_mesh(dim: Literal[2, 3]) -> pv.UnstructuredGrid:
     """
     box_surface_mesh = pv.Box(bounds=(0, 1, 0, 1, 0, 1), level=0, quads=False)
 
-    return (box_surface_mesh.cast_to_unstructured_grid(), 6) if dim == 2 \
-        else (box_surface_mesh.delaunay_3d().cast_to_unstructured_grid(), 1)
+    mesh = box_surface_mesh.cast_to_unstructured_grid() if dim == 2 \
+        else box_surface_mesh.delaunay_3d().cast_to_unstructured_grid()
+    vol = 6 if dim == 2 else 1
+
+    return mesh, vol
 
 
 def constant_function(x):
