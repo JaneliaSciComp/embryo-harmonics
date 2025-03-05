@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 import pyvista as pv
 
-from embryoharmonics.fem import compute_mass_and_stiffness
+from embryoharmonics.fem import compute_fem_matrices
 
 
 def create_box_mesh(dim: Literal[2, 3]) -> pv.UnstructuredGrid:
@@ -34,10 +34,10 @@ def test_mass_matrix_integrates_constant(dim):
     mesh, vol = create_box_mesh(dim)
     constant = 3.14
 
-    mass_matrix, _ = compute_mass_and_stiffness(mesh)
+    fem = compute_fem_matrices(mesh, stiffness=False)
     fun_value = constant * constant_function(mesh.points)
 
-    assert (mass_matrix @ fun_value).sum() == pytest.approx(constant * vol, rel=1e-2)
+    assert (fem.mass @ fun_value).sum() == pytest.approx(constant * vol, rel=1e-2)
 
 
 @pytest.mark.parametrize("dim", [2, 3])
@@ -45,11 +45,11 @@ def test_mass_matrix_integrates_linear(dim):
     """The mass matrix integrates linear functions correctly."""
     mesh, vol = create_box_mesh(dim)
 
-    mass_matrix, _ = compute_mass_and_stiffness(mesh)
+    fem = compute_fem_matrices(mesh, stiffness=False)
     fun_value = linear_function(mesh.points)
 
     expected = vol * np.ptp(fun_value) / 2
-    assert (mass_matrix @ fun_value).sum() == pytest.approx(expected, rel=1e-2)
+    assert (fem.mass @ fun_value).sum() == pytest.approx(expected, rel=1e-2)
 
 
 @pytest.mark.parametrize("dim", [2, 3])
@@ -58,10 +58,10 @@ def test_stiffness_matrix_integrates_constant(dim):
     mesh, _ = create_box_mesh(dim)
     constant = 3.14
 
-    _, stiffness_matrix = compute_mass_and_stiffness(mesh)
+    fem = compute_fem_matrices(mesh, mass=False)
     fun_value = constant * constant_function(mesh.points)
 
-    assert (stiffness_matrix @ fun_value).sum() == pytest.approx(0, abs=1e-2)
+    assert (fem.stiffness @ fun_value).sum() == pytest.approx(0, abs=1e-2)
 
 
 @pytest.mark.parametrize("dim", [2, 3])
@@ -69,8 +69,8 @@ def test_stiffness_matrix_integrates_linear(dim):
     """The stiffness matrix integrates linear functions correctly."""
     mesh, vol = create_box_mesh(dim)
 
-    _, stiffness_matrix = compute_mass_and_stiffness(mesh)
+    fem = compute_fem_matrices(mesh, mass=False)
     fun_value = linear_function(mesh.points)
 
     expected = dim * vol
-    assert fun_value.dot(stiffness_matrix @ fun_value) == pytest.approx(expected, abs=1e-2)
+    assert fun_value.dot(fem.stiffness @ fun_value) == pytest.approx(expected, abs=1e-2)
