@@ -22,7 +22,7 @@ from embryoharmonics import *
 from embryoharmonics import celegans
 
 # %%
-PATH = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_samples_2024_12_04.h5"
+PATH = "../tests/resources/celegans_models.h5"
 pv.set_jupyter_backend('client')
 
 # %%
@@ -35,13 +35,38 @@ print(f"Number of elements: {mesh.n_cells}")
 # %%
 # Compute first few eigenvectors
 k = 30
-pv_data, eigenvalues = compute_harmonics(mesh, k=k)
+harmonics, eigenvalues = compute_harmonics(mesh, k=k)
 
 # %%
 # Visualize harmonics
+def plot_harmonic(pv_mesh, harmonics, k) -> pv.Plotter:
+    """Plot the k-th harmonic of a given mesh."""
+    # Add data to the mesh
+    scalar_name = f"harmonic {k:03}"
+    pv_mesh[scalar_name] = harmonics[k]
+
+    # Set up visualization
+    plotter = pv.Plotter()
+    camera = pv.Camera()
+    camera.position = (-400.0, 400.0, -500.0)
+    camera.focal_point = (100.0, 50.0, 5.0)
+    plotter.camera = camera
+    axes = pv.Axes(show_actor=True, actor_scale=2.0, line_width=5)
+    axes.origin = (3.0, 3.0, 3.0)
+
+    # Add slices in different directions at different positions
+    slice1 = pv_mesh.slice(normal='x').translate((400, 0, -200))
+    plotter.add_mesh(slice1, scalars=scalar_name, cmap='turbo')
+    slice2 = pv_mesh.slice(normal='y').translate((200, 0, -100))
+    plotter.add_mesh(slice2, scalars=scalar_name, cmap='turbo')
+    slice3 = pv_mesh.slice_along_axis(n=10, axis="z")
+    plotter.add_mesh(slice3, scalars=scalar_name, cmap='turbo')
+    plotter.show()
+
+    pv_mesh.clear_data()
+
 for i in range(k):
-    p = plot_harmonic(pv_data, i)
-    p.show()
+    plot_harmonic(mesh, harmonics, i)
 
 # %%
 # It's easy to write and read data in the vtk format:
@@ -82,7 +107,7 @@ plt.show()
 
 # %%
 # Also, it's possible to compute the eigen-coefficients of the gene expression directly without smoothing
-eigen_coefficients = compute_eigen_coefficients(pv_data, gene_data)
+eigen_coefficients = compute_harmonic_coefficients(pv_data, gene_data)
 plt.scatter(range(k), np.abs(eigen_coefficients[GENE_NAME]))
 plt.title(f"Eigen coefficients of {GENE_NAME}")
 plt.xlabel("# harmonic")

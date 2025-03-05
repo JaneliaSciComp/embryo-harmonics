@@ -97,7 +97,7 @@ def write_data(file):
 
         gene_data = [gene_data_loader.load(gene, t) for gene in gene_names]
         tissue_data = [gene_data_loader.load_tissue(tissue, t) for tissue in tissue_names]
-        eigen_coefficients = compute_eigen_coefficients(pv_data, gene_data + tissue_data)
+        eigen_coefficients = compute_harmonic_coefficients(pv_data, gene_data + tissue_data)
 
         # Sort coefficients into the preallocated arrays
         for j, name in enumerate(gene_names):

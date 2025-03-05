@@ -17,7 +17,7 @@ def compute_harmonics(
         mesh: pv.UnstructuredGrid,
         *,
         k: int = 10,
-) -> tuple[pv.UnstructuredGrid, dict[str, np.ndarray]]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Compute the first k harmonics and some key metrics of the Laplace operator
     with Neumann boundary conditions on a given mesh.
@@ -35,15 +35,10 @@ def compute_harmonics(
     integrals = np.sum(fem.mass @ eigvecs, axis=0)
     eigvecs[:, integrals < 0] *= -1
 
-    # Store the harmonics in the mesh data structure
-    for i in range(k):
-        name = harmonic_name(i)
-        mesh[name] = eigvecs[:, i]
-
-    return mesh, eigvals
+    return eigvecs.T, eigvals
 
 
-def compute_eigen_coefficients(
+def compute_harmonic_coefficients(
         pv_data: pv.DataSet,
         gene_data: GeneData | Iterable[GeneData],
 ) -> dict[str, np.ndarray]:
@@ -55,13 +50,20 @@ def compute_eigen_coefficients(
     """
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]
-    _logger.info("Computing the coefficients of %s with respect to the harmonics", [data.name for data in gene_data])
+    _logger.info(
+        "Computing the coefficients of %s with respect to the harmonics",
+        [data.name for data in gene_data]
+    )
 
     harmonic_names = all_harmonic_names(pv_data)
     coefficients = {}
-    _logger.debug("Harmonics to compute eigen coefficients against: %s", all_harmonic_names(pv_data))
+    _logger.debug(
+        "Harmonics to compute eigen coefficients against: %s",
+        all_harmonic_names(pv_data)
+    )
 
-    # Make a copy of the mesh data that stores only the harmonics (to avoid interpolating other fields)
+    # Make a copy of the mesh data that stores only the harmonics (to avoid
+    # interpolating other fields)
     only_harmonics = pv_data.copy(deep=True)
     retain_harmonics(only_harmonics)
 
@@ -78,10 +80,14 @@ def compute_eigen_coefficients(
         point_evaluations = [interpolated_data[name][is_in_mesh] for name in harmonic_names]
 
         if not np.all(is_in_mesh):
-            _logger.warning("%d out of %d locations are outside the mesh and could not be interpolated for gene %s",
-                            np.sum(~is_in_mesh), len(is_in_mesh), filtered_data.name)
+            _logger.warning(
+                "%d out of %d locations are outside the mesh and are ignored for gene %s",
+                np.sum(~is_in_mesh), len(is_in_mesh), filtered_data.name
+            )
 
-        coefficients[filtered_data.name] = np.array([np.dot(p, activities) for p in point_evaluations])
+        coefficients[filtered_data.name] = np.array([
+            np.dot(p, activities) for p in point_evaluations
+        ])
 
     return coefficients
 
