@@ -5,9 +5,9 @@ import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.spatial import KDTree
 from netgen import occ
-from netgen.meshing import FaceDescriptor, Element2D
-from netgen.meshing import Mesh as NetgenMesh
-from ngsolve import Mesh as NgsMesh
+import netgen.libngpy._meshing as ng
+import ngsolve as ngs
+import pyvista as pv
 
 
 _logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class EmbryoModel:
             self,
             n_interpolation: int = 32,
             mesh_size: float = 5.0
-    ) -> NgsMesh:
+    ) -> ngs.Mesh:
         """
         Generate a volume mesh from the embryo model.
         :param n_interpolation: The number of points to use for interpolating
@@ -58,13 +58,14 @@ class EmbryoModel:
         """
         _logger.debug("Generating mesh for embryo model")
         geometry = _assemble_embryo_geometry(self, n_interpolation)
-        return _mesh_embryo_geometry(geometry, mesh_size)
+        ngs_mesh = _mesh_embryo_geometry(geometry, mesh_size)
+        return _to_vtk(ngs_mesh)
 
 
 def _mesh_embryo_geometry(
         worm_geometry: occ.Compound,
         mesh_size: float
-) -> NgsMesh:
+) -> ngs.Mesh:
     """
     Mesh the geometry of an embryo.
     :param worm_geometry: The geometry of the embryo to mesh
@@ -74,7 +75,7 @@ def _mesh_embryo_geometry(
     geo = occ.OCCGeometry(worm_geometry)
     surface_mesh = geo.GenerateMesh(maxh=mesh_size)
     vol_mesh, _ = _convert_to_volume_mesh(surface_mesh, mesh_size, mesh_size / 10)
-    return NgsMesh(vol_mesh)
+    return ngs.Mesh(vol_mesh)
 
 
 def _assemble_embryo_geometry(
@@ -108,10 +109,10 @@ def _assemble_embryo_geometry(
 
 
 def _convert_to_volume_mesh(
-        surface_mesh: NetgenMesh,
+        surface_mesh: ng.Mesh,
         mesh_size: float,
         max_node_distance: float = None
-) -> tuple[NetgenMesh, dict[int, int]]:
+) -> tuple[ng.Mesh, dict[int, int]]:
     """
     Convert a surface mesh to a volume mesh by adding a single domain inside the
     surface and no domain outside. If the surface mesh is not closed (i.e.,
@@ -125,7 +126,7 @@ def _convert_to_volume_mesh(
     """
     n_nodes = len(surface_mesh.Points())
     node_is_unique = np.ones(n_nodes, dtype=bool)
-    new_mesh = NetgenMesh()
+    new_mesh = ng.Mesh()
     old_to_new = {}
 
     _logger.debug("Converting surface mesh with %d nodes to volume mesh", n_nodes)
@@ -165,11 +166,11 @@ def _convert_to_volume_mesh(
 
     # Create a face descriptor that is used for all elements
     # (one single surface with one domain inside and no domain outside)
-    face_descriptor = new_mesh.Add(FaceDescriptor(surfnr=1, domin=1, domout=0, bc=1))
+    face_descriptor = new_mesh.Add(ng.FaceDescriptor(surfnr=1, domin=1, domout=0, bc=1))
 
     # Copy elements
     for e in surface_mesh.Elements2D():
-        new_mesh.Add(Element2D(face_descriptor, [old_to_new[v] for v in e.vertices]))
+        new_mesh.Add(ng.Element2D(face_descriptor, [old_to_new[v] for v in e.vertices]))
 
     # Generate volume mesh from surface
     new_mesh.GenerateVolumeMesh(maxh=mesh_size)
@@ -241,3 +242,20 @@ def _get_spline_surface(
     surf = surf.Rotate(occ.Axis(occ.Pnt(0, 0, 0), occ.X), 90)
     surf = surf.Rotate(occ.Axis(occ.Pnt(0, 0, 0), occ.Z), -angle)
     return surf
+
+
+def _to_vtk(mesh: ngs.Mesh) -> pv.UnstructuredGrid:
+    """
+    Convert an NGSolve mesh to a pyvista.UnstructuredGrid object.
+    :param mesh: The NGSolve mesh to convert
+    :return: A :class:`pyvista.UnstructuredGrid` object containing the mesh
+    """
+    points = mesh.ngmesh.Coordinates()
+    cells = []
+    cell_types = []
+    for el in mesh.ngmesh.Elements3D():
+        # NGSolve uses 1-based indexing for vertices
+        cells.append([4] + [el.vertices[i].nr - 1 for i in range(4)])
+        cell_types.append(pv.CellType.TETRA)
+
+    return pv.UnstructuredGrid(cells, cell_types, points)
