@@ -36,4 +36,4 @@ def test_model_can_generate_mesh():
         embryo_model = embryo_model_loader.load(420)
 
         mesh = embryo_model.generate_mesh()
-        assert mesh.ne > 0
+        assert mesh.n_cells > 0
