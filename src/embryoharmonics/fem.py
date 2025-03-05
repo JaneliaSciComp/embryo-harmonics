@@ -64,7 +64,8 @@ def compute_mass_and_stiffness_3d(
     det_element_trafo = np.vecdot(np.cross(e_10, e_20, axis=1), e_30, axis=1)
     swap = det_element_trafo < 0
     if np.any(swap):
-        cell_to_vertex[swap, [1, 2]] = cell_to_vertex[swap, [2, 1]]
+        cell_to_vertex[swap, 1], cell_to_vertex[swap, 2] = \
+            cell_to_vertex[swap, 2], cell_to_vertex[swap, 1]
         e_10[swap], e_20[swap] = e_20[swap], e_10[swap]
         det_element_trafo[swap] = -det_element_trafo[swap]
 

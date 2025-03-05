@@ -1,14 +1,12 @@
 import logging
-from typing import Literal, Tuple, Iterable, Dict
+from typing import Iterable
 
 import numpy as np
 import pyvista as pv
-import scipy.sparse as sp
 import scipy.sparse.linalg as spla
-from ngsolve import H1, grad, dx, BilinearForm, GridFunction, x, y, Integrate
-from ngsolve import Mesh as NgsMesh
 
 from embryoharmonics._utils import harmonic_name, all_harmonic_names, retain_harmonics
+from embryoharmonics.fem import compute_fem_matrices
 from embryoharmonics.gene_data import GeneData
 
 
@@ -16,109 +14,39 @@ _logger = logging.getLogger(__name__)
 
 
 def compute_harmonics(
-        mesh,
+        mesh: pv.UnstructuredGrid,
         *,
         k: int = 10,
-        boundary_condition: Literal['dirichlet', 'neumann'] = "neumann",
-        store_dirichlet_densities: bool = False,
-) -> Tuple[pv.UnstructuredGrid, Dict[str, np.ndarray]]:
+) -> tuple[pv.UnstructuredGrid, dict[str, np.ndarray]]:
     """
-    Compute the first k harmonics and some key metrics of the Laplace operator on a given mesh.
-    :param mesh: The mesh to compute the harmonics on
+    Compute the first k harmonics and some key metrics of the Laplace operator
+    with Neumann boundary conditions on a given mesh.
+    :param mesh: The triangular/tetrahedral mesh to compute the harmonics on
     :param k: The number of harmonics to compute
-    :param boundary_condition: The boundary condition to apply (either 'dirichlet' or 'neumann')
-    :param store_dirichlet_densities: Whether to store the densities of the Dirichlet energy in the radial, angular,
-        and z direction as functions as harmonic_XXX_dirichlet_[rpz] in the output data
-    :return: The harmonics (as pyvista data structure), and a dictionary containing eigenvalues and the dirichlet
-    energy in radial, angular, and z direction as numpy arrays
+    :return: The harmonics (as pyvista data structure), and a dictionary
+        containing eigenvalues as numpy arrays
     """
-
     # Set up lowest-order finite element problem for the Laplace operator
     _logger.info("Computing the first %d harmonics on the given mesh", k)
-    fes = H1(mesh, order=1, dirichlet="default")
-    u, v = fes.TnT()
+    fem = compute_fem_matrices(mesh)
+    eigvals, eigvecs = spla.eigsh(A=fem.stiffness, M=fem.mass, k=k, which='LM', sigma=0.0)
 
-    a = BilinearForm(fes, symmetric=True)
-    a += grad(u) * grad(v) * dx
-    a.Assemble()
+    # Make sure that eigenvalues have the correct sign
+    integrals = np.sum(fem.mass @ eigvecs, axis=0)
+    eigvecs[:, integrals < 0] *= -1
 
-    m = BilinearForm(fes, symmetric=True)
-    m += u * v * dx
-    m.Assemble()
-
-    match boundary_condition:
-        case 'dirichlet':
-            mask = np.array([free for free in fes.FreeDofs()])
-        case 'neumann':
-            mask = np.ones(fes.ndof, dtype=bool)
-        case _:
-            raise ValueError(f"Invalid boundary condition '{boundary_condition}'")
-
-    stiffness = _to_scipy_csr(a, mask)
-    mass = _to_scipy_csr(m, mask)
-    eigvals, eigvecs = spla.eigsh(A=stiffness, M=mass, k=k, which='LM', sigma=0.0)
-
-    dirichlet_energy = CylindricalDirichletEnergy(fes)
-    rpz = np.zeros((k, 3))
-    for i in range(k):
-        rpz[i, 0], rpz[i, 1], rpz[i, 2] = dirichlet_energy.compute_integral(eigvecs[:, i])
-    metrics = dict(eigenvalues=eigvals, dirichlet_r=rpz[:, 0], dirichlet_p=rpz[:, 1], dirichlet_z=rpz[:, 2])
-
-    full_eigvecs = np.zeros((fes.ndof, k))
-    full_eigvecs[mask, :] = eigvecs
-
-    pv_data = _to_vtk(mesh)
+    # Store the harmonics in the mesh data structure
     for i in range(k):
         name = harmonic_name(i)
-        pv_data[name] = full_eigvecs[:, i]
-        if store_dirichlet_densities:
-            r, p, z = dirichlet_energy.compute_density(eigvecs[:, i])
-            pv_data[f"{name}_dirichlet_r"] = r
-            pv_data[f"{name}_dirichlet_p"] = p
-            pv_data[f"{name}_dirichlet_z"] = z
+        mesh[name] = eigvecs[:, i]
 
-    return pv_data, metrics
-
-
-class CylindricalDirichletEnergy:
-    def __init__(self, fes):
-        self.fes = fes
-        self.u = GridFunction(self.fes)
-        self.v = GridFunction(self.fes)
-
-    def compute_integral(self, eigvec):
-        dr, dp, dz = self._get_components(eigvec)
-        return Integrate(dr, self.fes.mesh), Integrate(dp, self.fes.mesh), Integrate(dz, self.fes.mesh)
-
-
-    def compute_density(self, eigvec):
-        dr, dp, dz = self._get_components(eigvec)
-        self.v.Set(dr)
-        r = self.v.vec.FV().NumPy().copy()
-        self.v.Set(dp)
-        p = self.v.vec.FV().NumPy().copy()
-        self.v.Set(dz)
-        z = self.v.vec.FV().NumPy().copy()
-
-        return r, p, z
-
-    def _get_components(self, eigvec):
-        r_squared = x ** 2 + y ** 2
-
-        self.u.vec.FV().NumPy()[:] = eigvec[:]
-        du = grad(self.u)
-
-        dr = (x * du[0] + y * du[1]) ** 2 / r_squared
-        dp = (-y * du[0] + x * du[1]) ** 2 / r_squared
-        dz = du[2] ** 2
-
-        return dr, dp, dz
+    return mesh, eigvals
 
 
 def compute_eigen_coefficients(
         pv_data: pv.DataSet,
         gene_data: GeneData | Iterable[GeneData],
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     Compute the coefficients of the given fields with respect to the harmonics.
     :param pv_data: The mesh data to compute the coefficients for
@@ -156,29 +84,6 @@ def compute_eigen_coefficients(
         coefficients[filtered_data.name] = np.array([np.dot(p, activities) for p in point_evaluations])
 
     return coefficients
-
-
-def _to_scipy_csr(blf, mask):
-    row, col, val = blf.mat.COO()
-    sparse = sp.csr_matrix((val, (row, col)))
-    return sparse[mask][:, mask]
-
-
-def _to_vtk(mesh: NgsMesh,) -> pv.UnstructuredGrid:
-    """
-    Convert an NGSolve mesh to a pyvista.UnstructuredGrid object.
-    :param mesh: The NGSolve mesh to convert
-    :return: A :class:`pyvista.UnstructuredGrid` object containing the mesh
-    """
-    points = mesh.ngmesh.Coordinates()
-    cells = []
-    cell_types = []
-    for el in mesh.ngmesh.Elements3D():
-        # NGSolve uses 1-based indexing for vertices
-        cells.append([4] + [el.vertices[i].nr - 1 for i in range(4)])
-        cell_types.append(pv.CellType.TETRA)
-
-    return pv.UnstructuredGrid(cells, cell_types, points)
 
 
 def compose_eigen_coefficients(

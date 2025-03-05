@@ -19,34 +19,26 @@ import pyvista as pv
 import matplotlib.pyplot as plt
 
 from embryoharmonics import *
+from embryoharmonics import celegans
 
 # %%
 PATH = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_samples_2024_12_04.h5"
-h5file = h5py.File(PATH, 'r')
 pv.set_jupyter_backend('client')
 
 # %%
 TIME_STEP = 420
-embryo_model_loader = EmbryoModelLoader(h5file)
+embryo_model_loader = celegans.EmbryoModelLoader(PATH)
 embryo_model = embryo_model_loader.load(TIME_STEP)
-mesh = generate_embryo_mesh(embryo_model, mesh_size=5)
-print(f"Number of elements: {mesh.ne}")
+mesh = embryo_model.generate_mesh(mesh_size=5)
+print(f"Number of elements: {mesh.n_cells}")
 
 # %%
 # Compute first few eigenvectors
 k = 30
-pv_data, metrics = compute_harmonics(mesh, k=k, boundary_condition="neumann", store_dirichlet_densities=True)
+pv_data, eigenvalues = compute_harmonics(mesh, k=k)
 
 # %%
-# Find type of harmonics (Note: this is not the most robust criterion)
-dirichlet_rpz = np.vstack((metrics['dirichlet_r'], metrics['dirichlet_p'], metrics['dirichlet_z']))
-max_dirichlet = np.argmax(dirichlet_rpz, axis=0)
-harmonic_type = ['radial', 'angular', 'height']
-for i, idx in enumerate(max_dirichlet):
-    print(f"harmonic {i:02d}: {harmonic_type[idx]}")
-
-# %%
-# Visualize harmonics (use dirichlet="r", "p", "z" to plot components of the dirichlet energy density)
+# Visualize harmonics
 for i in range(k):
     p = plot_harmonic(pv_data, i)
     p.show()
