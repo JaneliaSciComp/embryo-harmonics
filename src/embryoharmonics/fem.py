@@ -22,6 +22,7 @@ def compute_fem_matrices(
     """
     Compute the mass and stiffness matrices for a given 2D or 3D simplicial
     mesh.
+
     :param mesh: The mesh to compute the matrices on
     :param mass: Whether to compute the mass matrix
     :param stiffness: Whether to compute the stiffness matrix
@@ -46,6 +47,7 @@ def compute_mass_and_stiffness_3d(
 ) -> FemMatrices:
     """
     Compute the mass and stiffness matrices for a given 3D mesh.
+
     :param mesh: The mesh to compute the matrices on
     :param mass: Whether to compute the mass matrix
     :param stiffness: Whether to compute the stiffness matrix
@@ -106,6 +108,7 @@ def compute_mass_and_stiffness_2d(
 ) -> FemMatrices:
     """
     Compute the mass and stiffness matrices for a given 2D mesh.
+    
     :param mesh: The mesh to compute the matrices on
     :param mass: Whether to compute the mass matrix
     :param stiffness: Whether to compute the stiffness matrix
