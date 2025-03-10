@@ -5,8 +5,7 @@ from typing import Iterable, List, Dict
 import h5py
 import numpy as np
 import pyvista as pv
-from ngsolve import H1, dx, BilinearForm, LinearForm, GridFunction, TaskManager, grad
-from ngsolve import Mesh as NgsMesh
+import ngsolve as ngs
 
 from embryoharmonics._utils import all_harmonic_names
 
@@ -17,7 +16,7 @@ _logger = logging.getLogger(__name__)
 @dataclass
 class GeneData:
     """
-    Data class representing the expression data for a gene at a single point in time.
+    Expression data for a gene at a single point in time.
     """
     name: str
     locations: np.ndarray
@@ -37,11 +36,12 @@ class GeneData:
 
 class GeneDataLoader:
     """
-    Class for loading gene expression data from an HDF5 file.
+    Loader for gene expression data from an HDF5 file.
     """
     def __init__(self, h5file: h5py.File):
         """
         Initialize the gene data loader.
+
         :param h5file: The HDF5 file containing the gene expression data
         """
         self.h5file = h5file
@@ -64,6 +64,7 @@ class GeneDataLoader:
     def gene_names(self) -> List[str]:
         """
         Get the names of all genes in the HDF5 file.
+
         :return: The names of all genes
         """
         return list(self._gene_to_index.keys())
@@ -72,6 +73,7 @@ class GeneDataLoader:
     def tissue_names(self) -> List[str]:
         """
         Get the names of all tissues in the HDF5 file.
+
         :return: The names of all tissues
         """
         return list(self._tissue_to_index.keys())
@@ -80,6 +82,7 @@ class GeneDataLoader:
     def time_steps(self) -> List[int]:
         """
         Get the time steps in the HDF5 file.
+
         :return: The time steps in the HDF5 file
         """
         return list(self._time_to_index.keys())
@@ -144,7 +147,7 @@ def _convert_raw_names(raw_names):
 
 
 def interpolate_gene_data(
-        mesh: NgsMesh,
+        mesh: ngs.Mesh,
         gene_data: GeneData | Iterable[GeneData],
         pv_data: pv.UnstructuredGrid,
         *,
@@ -175,21 +178,21 @@ def interpolate_gene_data(
     # Set up lowest-order finite element problem for the Poisson equation
     n_time_steps = 100
     dt = 1 / n_time_steps
-    fes = H1(mesh, order=1)
+    fes = ngs.H1(mesh, order=1)
     u, v = fes.TnT()
 
     diffusivity = smoothness ** 2
-    a = BilinearForm(fes)
-    a += diffusivity * grad(u) * grad(v) * dx
-    m = BilinearForm(fes)
-    m += u * v * dx
+    a = ngs.BilinearForm(fes)
+    a += diffusivity * ngs.grad(u) * ngs.grad(v) * ngs.dx
+    m = ngs.BilinearForm(fes)
+    m += u * v * ngs.dx
 
     harmonic_names = all_harmonic_names(pv_data)
     eigen_coefficients = {}
 
     # TODO: use scipy.sparse.linalg.expm_multiply instead?
     # TODO: use numpy factorizations (e.g., scipy.sparse.linalg.splu)?
-    with TaskManager():
+    with ngs.TaskManager():
         a.Assemble()
         m.Assemble()
         m_inverse = m.mat.Inverse(fes.FreeDofs())
@@ -209,7 +212,7 @@ def interpolate_gene_data(
                                 np.sum(~is_in_mesh), len(is_in_mesh), filtered_data.name)
 
             # Use gene expression data as point sources
-            f = LinearForm(fes)
+            f = ngs.LinearForm(fes)
             for i in range(len(filtered_data)):
                 if is_in_mesh[i]:
                     f += (filtered_data.activities[i] * v)(*filtered_data.locations[i])
@@ -217,7 +220,7 @@ def interpolate_gene_data(
             # First, L2-interpolate the gene expression data onto the mesh, then
             # smooth it via the heat equation
             f.Assemble()
-            solution = GridFunction(fes)
+            solution = ngs.GridFunction(fes)
             solution.vec.data = m_inverse * f.vec
             for _ in range(n_time_steps):
                 res = -dt * (a.mat * solution.vec)
