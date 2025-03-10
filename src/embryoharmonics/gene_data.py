@@ -27,8 +27,12 @@ class GeneData:
         return len(self.activities)
 
     def filter_nan_values(self) -> "GeneData":
-        non_nan_indices = np.where(np.logical_not(np.isnan(self.activities)))[0]
-        return GeneData(self.name, self.locations[non_nan_indices], self.activities[non_nan_indices])
+        """Remove NaN values from the gene expression data.
+        
+        :return: A new :class:`GeneData` object with NaN values removed.
+        """
+        not_nan = np.where(np.logical_not(np.isnan(self.activities)))[0]
+        return GeneData(self.name, self.locations[not_nan], self.activities[not_nan])
 
 
 class GeneDataLoader:
@@ -87,22 +91,24 @@ class GeneDataLoader:
     ) -> GeneData:
         """
         Load the gene expression data for the given gene.
+
         :param gene_name: The name of the gene to load
         :param time_step: Which time step to load
         :return: A :class:`GeneData` object containing the gene expression data
         """
-        _logger.info("Loading gene %s at time step %d from '%s'", gene_name, time_step, self.h5file.filename)
+        _logger.info("Loading gene %s at time step %d from '%s'",
+                     gene_name, time_step, self.h5file.filename)
         try:
-            i = self._time_to_index[time_step]
+            t = self._time_to_index[time_step]
         except KeyError as e:
             raise ValueError(f"Time step {time_step} not found in the HDF5 file") from e
 
         try:
-            gene_index = self._gene_to_index[gene_name]
+            g = self._gene_to_index[gene_name]
         except KeyError as e:
             raise ValueError(f"Gene {gene_name} not found in the HDF5 file") from e
 
-        return GeneData(gene_name, self._locations[i, :, :], self._gene_activities[i, gene_index, :])
+        return GeneData(gene_name, self._locations[t, :, :], self._gene_activities[t, g, :])
 
     def load_tissue(
             self,
@@ -110,7 +116,9 @@ class GeneDataLoader:
             time_step: int
     ) -> GeneData:
         """
-        Load the data for the given tissue (where the activity is just 1 for cells in the tissue and 0 otherwise).
+        Load the data for the given tissue (where the activity is just 1 for
+        cells in the tissue and 0 otherwise).
+
         :param tissue_name: The name of the tissue to load
         :param time_step: Which time step to load
         :return: A :class:`GeneData` object containing the tissue data
@@ -125,12 +133,14 @@ class GeneDataLoader:
         except KeyError as e:
             raise ValueError(f"Tissue {tissue_name} not found in the HDF5 file") from e
 
-        _logger.info("Loading tissue %s at time step %d from '%s'", tissue_name, time_step, self.h5file.filename)
+        _logger.info("Loading tissue %s at time step %d from '%s'",
+                     tissue_name, time_step, self.h5file.filename)
         return GeneData(tissue_name, self._locations[i, :, :], self._tissues[tissue_index, :])
 
 
 def _convert_raw_names(raw_names):
-    return {raw_names[:, i].astype(np.uint8).tobytes().decode('ascii').strip(): i for i in range(raw_names.shape[1])}
+    return {raw_names[:, i].astype(np.uint8).tobytes().decode('ascii').strip(): i
+            for i in range(raw_names.shape[1])}
 
 
 def interpolate_gene_data(
@@ -142,19 +152,25 @@ def interpolate_gene_data(
         compute_eigen_coefficients: bool = False
 ) -> None | Dict[str, np.ndarray]:
     """
-    Interpolate gene expression data onto the mesh by solving a Poisson equation with the gene expression as the sources
-    and homogeneous Neumann boundary conditions. Nan values are ignored.
-    :param mesh: The mesh to interpolate the gene data onto
-    :param gene_data: A :class:`GeneData` object containing the gene expression data
-    :param pv_data: A :class:`pyvista.UnstructuredGrid` object where the interpolated data is stored as a scalar field
-    :param smoothness: A measure between 0 and infinity of how smooth the interpolated data should be (roughly the
-        radius of the smoothing kernel)
-    :param compute_eigen_coefficients: Whether to compute the coefficients of the interpolated data with respect to the
-        harmonics; if True, the coefficients are returned as a dictionary
+    Interpolate gene expression data onto the mesh by solving a Poisson equation
+    with the gene expression as the sources and homogeneous Neumann boundary
+    conditions. Nan values are ignored.
+
+    :param mesh: The mesh to interpolate the gene data onto.
+    :param gene_data: A :class:`GeneData` object containing the gene expression
+        data.
+    :param pv_data: A :class:`pyvista.UnstructuredGrid` object where the
+        interpolated data is stored as a scalar field
+    :param smoothness: A measure between 0 and infinity of how smooth the
+        interpolated data should be (roughly the radius of the smoothing kernel)
+    :param compute_eigen_coefficients: Whether to compute the coefficients of
+        the interpolated data with respect to the harmonics; if True, the
+        coefficients are returned as a dictionary
     """
     if not isinstance(gene_data, Iterable):
         gene_data = [gene_data]
-    _logger.info("Interpolating gene data for %s onto the mesh", ", ".join(data.name for data in gene_data))
+    _logger.info("Interpolating gene data for %s onto the mesh",
+                 ", ".join(data.name for data in gene_data))
 
     # Set up lowest-order finite element problem for the Poisson equation
     n_time_steps = 100
@@ -162,15 +178,17 @@ def interpolate_gene_data(
     fes = H1(mesh, order=1)
     u, v = fes.TnT()
 
-    D = smoothness ** 2
+    diffusivity = smoothness ** 2
     a = BilinearForm(fes)
-    a += D * grad(u) * grad(v) * dx
+    a += diffusivity * grad(u) * grad(v) * dx
     m = BilinearForm(fes)
     m += u * v * dx
 
     harmonic_names = all_harmonic_names(pv_data)
     eigen_coefficients = {}
 
+    # TODO: use scipy.sparse.linalg.expm_multiply instead?
+    # TODO: use numpy factorizations (e.g., scipy.sparse.linalg.splu)?
     with TaskManager():
         a.Assemble()
         m.Assemble()
@@ -186,7 +204,8 @@ def interpolate_gene_data(
             filtered_data = data.filter_nan_values()
             is_in_mesh = np.array([mesh.Contains(*p) for p in filtered_data.locations])
             if not np.all(is_in_mesh):
-                _logger.warning("%d out of %d locations are outside the mesh and could not be interpolated for gene %s",
+                _logger.warning("%d out of %d locations are outside the mesh"
+                                "and could not be interpolated for gene %s",
                                 np.sum(~is_in_mesh), len(is_in_mesh), filtered_data.name)
 
             # Use gene expression data as point sources
@@ -195,7 +214,8 @@ def interpolate_gene_data(
                 if is_in_mesh[i]:
                     f += (filtered_data.activities[i] * v)(*filtered_data.locations[i])
 
-            # First, L2-interpolate the gene expression data onto the mesh, then smooth it via the heat equation
+            # First, L2-interpolate the gene expression data onto the mesh, then
+            # smooth it via the heat equation
             f.Assemble()
             solution = GridFunction(fes)
             solution.vec.data = m_inverse * f.vec
@@ -208,7 +228,7 @@ def interpolate_gene_data(
 
             if compute_eigen_coefficients:
                 m_times_solution = (m.mat * solution.vec).Evaluate().FV().NumPy()
-                coeff = np.array([np.dot(m_times_solution, pv_data[harmonic]) for harmonic in harmonic_names])
+                coeff = np.array([np.dot(m_times_solution, pv_data[h]) for h in harmonic_names])
                 eigen_coefficients[filtered_data.name] = coeff
 
     if compute_eigen_coefficients:
