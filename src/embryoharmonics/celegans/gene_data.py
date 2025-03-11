@@ -15,8 +15,7 @@ _logger = logging.getLogger(__name__)
 
 @dataclass
 class GeneData:
-    """
-    Expression data for a gene at a single point in time.
+    """Expression data for a gene at a single point in time.
     """
     name: str
     locations: np.ndarray
@@ -35,12 +34,10 @@ class GeneData:
 
 
 class GeneDataLoader:
-    """
-    Loader for gene expression data from an HDF5 file.
+    """Loader for gene expression data from an HDF5 file.
     """
     def __init__(self, h5file: h5py.File):
-        """
-        Initialize the gene data loader.
+        """Initialize the gene data loader.
 
         :param h5file: The HDF5 file containing the gene expression data
         """
@@ -62,8 +59,7 @@ class GeneDataLoader:
 
     @property
     def gene_names(self) -> List[str]:
-        """
-        Get the names of all genes in the HDF5 file.
+        """Get the names of all genes in the HDF5 file.
 
         :return: The names of all genes
         """
@@ -71,8 +67,7 @@ class GeneDataLoader:
 
     @property
     def tissue_names(self) -> List[str]:
-        """
-        Get the names of all tissues in the HDF5 file.
+        """Get the names of all tissues in the HDF5 file.
 
         :return: The names of all tissues
         """
@@ -80,8 +75,7 @@ class GeneDataLoader:
 
     @property
     def time_steps(self) -> List[int]:
-        """
-        Get the time steps in the HDF5 file.
+        """Get the time steps in the HDF5 file.
 
         :return: The time steps in the HDF5 file
         """
@@ -92,8 +86,7 @@ class GeneDataLoader:
             gene_name: str,
             time_step: int
     ) -> GeneData:
-        """
-        Load the gene expression data for the given gene.
+        """Load the gene expression data for the given gene.
 
         :param gene_name: The name of the gene to load
         :param time_step: Which time step to load
@@ -118,8 +111,7 @@ class GeneDataLoader:
             tissue_name: str,
             time_step: int
     ) -> GeneData:
-        """
-        Load the data for the given tissue (where the activity is just 1 for
+        """Load the data for the given tissue (where the activity is just 1 for
         cells in the tissue and 0 otherwise).
 
         :param tissue_name: The name of the tissue to load
@@ -154,8 +146,7 @@ def interpolate_gene_data(
         smoothness: float = 1.0,
         compute_eigen_coefficients: bool = False
 ) -> None | Dict[str, np.ndarray]:
-    """
-    Interpolate gene expression data onto the mesh by solving a Poisson equation
+    """Interpolate gene expression data onto the mesh by solving a Poisson equation
     with the gene expression as the sources and homogeneous Neumann boundary
     conditions. Nan values are ignored.
 

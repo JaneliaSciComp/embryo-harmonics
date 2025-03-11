@@ -4,7 +4,7 @@ import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
 
-from embryoharmonics import *
+from embryoharmonics import Harmonics, MeshData
 from embryoharmonics import celegans
 
 # %%
