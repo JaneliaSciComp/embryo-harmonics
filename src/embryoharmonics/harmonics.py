@@ -2,108 +2,141 @@ import logging
 from typing import Iterable
 
 import numpy as np
+from numpy.typing import ArrayLike
 import pyvista as pv
 import scipy.sparse.linalg as spla
 
-from embryoharmonics._utils import harmonic_name, all_harmonic_names, retain_harmonics
 from embryoharmonics.fem import compute_fem_matrices
-from embryoharmonics.gene_data import GeneData
+from embryoharmonics.mesh_data import MeshData
 
 
 _logger = logging.getLogger(__name__)
 
 
-def compute_harmonics(
-        mesh: pv.UnstructuredGrid,
-        *,
-        k: int = 10,
-) -> tuple[np.ndarray, np.ndarray]:
+class Harmonics:
     """
-    Compute the first k harmonics and some key metrics of the Laplace operator
-    with Neumann boundary conditions on a given mesh.
-    :param mesh: The triangular/tetrahedral mesh to compute the harmonics on
-    :param k: The number of harmonics to compute
-    :return: The harmonics (as pyvista data structure), and a dictionary
-        containing eigenvalues as numpy arrays
+    Harmonics and eigenvalues for a given mesh.
     """
-    # Set up lowest-order finite element problem for the Laplace operator
-    _logger.info("Computing the first %d harmonics on the given mesh", k)
-    fem = compute_fem_matrices(mesh)
-    eigvals, eigvecs = spla.eigsh(A=fem.stiffness, M=fem.mass, k=k, which='LM', sigma=0.0)
+    _mesh: pv.UnstructuredGrid
+    _harmonics: ArrayLike
+    eigenvalues: ArrayLike
 
-    # Make sure that eigenvalues have the correct sign
-    integrals = np.sum(fem.mass @ eigvecs, axis=0)
-    eigvecs[:, integrals < 0] *= -1
+    def __init__(
+            self,
+            mesh: pv.UnstructuredGrid,
+            harmonics: ArrayLike,
+            eigenvalues: ArrayLike
+    ):
+        """
+        Initialize the harmonics and eigenvalues for a given mesh.
 
-    return eigvecs.T, eigvals
-
-
-def compute_harmonic_coefficients(
-        pv_data: pv.DataSet,
-        gene_data: GeneData | Iterable[GeneData],
-) -> dict[str, np.ndarray]:
-    """
-    Compute the coefficients of the given fields with respect to the harmonics.
-    :param pv_data: The mesh data to compute the coefficients for
-    :param gene_data: The gene data to compute the coefficients for
-    :return: The coefficients of the fields with respect to the harmonics
-    """
-    if not isinstance(gene_data, Iterable):
-        gene_data = [gene_data]
-    _logger.info(
-        "Computing the coefficients of %s with respect to the harmonics",
-        [data.name for data in gene_data]
-    )
-
-    harmonic_names = all_harmonic_names(pv_data)
-    coefficients = {}
-    _logger.debug(
-        "Harmonics to compute eigen coefficients against: %s",
-        all_harmonic_names(pv_data)
-    )
-
-    # Make a copy of the mesh data that stores only the harmonics (to avoid
-    # interpolating other fields)
-    only_harmonics = pv_data.copy(deep=True)
-    retain_harmonics(only_harmonics)
-
-    for data in gene_data:
-        # Filter Nan values and interpolate grid data onto the gene data locations
-        _logger.debug("Interpolating gene %s", data.name)
-        filtered_data = data.filter_nan_values()
-        points = pv.PolyData(filtered_data.locations)
-        interpolated_data = points.sample(only_harmonics)
-
-        # Filter data that could not be interpolated (i.e., outside the mesh)
-        is_in_mesh = interpolated_data["vtkValidPointMask"].astype(bool)
-        activities = filtered_data.activities[is_in_mesh]
-        point_evaluations = [interpolated_data[name][is_in_mesh] for name in harmonic_names]
-
-        if not np.all(is_in_mesh):
-            _logger.warning(
-                "%d out of %d locations are outside the mesh and are ignored for gene %s",
-                np.sum(~is_in_mesh), len(is_in_mesh), filtered_data.name
-            )
-
-        coefficients[filtered_data.name] = np.array([
-            np.dot(p, activities) for p in point_evaluations
-        ])
-
-    return coefficients
+        :param mesh: The mesh to compute the harmonics on
+        :param harmonics: The harmonics to compute
+        :param eigenvalues: The eigenvalues of the harmonics
+        """
+        self._mesh = mesh
+        self._harmonics = harmonics
+        self.eigenvalues = eigenvalues
 
 
-def compose_eigen_coefficients(
-        pv_data: pv.UnstructuredGrid,
-        eigen_coefficients: np.ndarray,
-        name: str
-) -> None:
-    """
-    Compose harmonics weighted by the given eigen coefficients (NaNs are ignored).
-    :param pv_data: The mesh data to compose the harmonics on
-    :param eigen_coefficients: The weights to use for composing the harmonics
-    :param name: The name of the composed field (will be added to pv_data)
-    """
-    _logger.info("Composing harmonics with given coefficients to store in field %s", name)
-    indices = [i for i in range(len(eigen_coefficients)) if not np.isnan(eigen_coefficients[i])]
-    result = sum(eigen_coefficients[i] * pv_data[harmonic_name(i)] for i in indices)
-    pv_data[name] = result
+    def __getitem__(self, item) -> MeshData:
+        if not isinstance(item, int):
+            raise TypeError(f"Invalid index type {type(item)}; must be int")
+
+        num_zeros = len(str(len(self._harmonics) - 1))
+        name = f"harmonic_{item:0{num_zeros}d}"
+        return MeshData(self._mesh, name, self._harmonics[item])
+
+
+    def __len__(self):
+        return len(self._harmonics)
+
+
+    @classmethod
+    def compute(
+            cls,
+            mesh: pv.UnstructuredGrid,
+            *,
+            n: int = 10,
+    ) -> "Harmonics":
+        """
+        Compute the first n harmonics and some key metrics of the Laplace operator
+        with Neumann boundary conditions on a given mesh.
+
+        :param mesh: The triangular/tetrahedral mesh to compute the harmonics on
+        :param n: The number of harmonics to compute
+        :return: The harmonics (as pyvista data structure), and a dictionary
+            containing eigenvalues as numpy arrays
+        """
+        # Set up lowest-order finite element problem for the Laplace operator
+        _logger.info("Computing the first %d harmonics on the given mesh", n)
+        fem = compute_fem_matrices(mesh)
+        eigvals, eigvecs = spla.eigsh(A=fem.stiffness, M=fem.mass, k=n, which='LM', sigma=0.0)
+
+        # Make sure that eigenvalues have the correct sign
+        integrals = np.sum(fem.mass @ eigvecs, axis=0)
+        eigvecs[:, integrals < 0] *= -1
+
+        return Harmonics(mesh, eigvecs.T, eigvals)
+
+
+    def subset(
+            self,
+            indices: slice | Iterable[int],
+    ) -> 'Harmonics':
+        """
+        Limit the harmonics to the given indices.
+
+        :param indices: The harmonics to limit to
+        :return: The subset of harmonics
+        """
+        return Harmonics(self._mesh, self._harmonics[indices], self.eigenvalues[indices])
+
+
+    def decompose(
+            self,
+            mesh_data: MeshData | Iterable[MeshData],
+    ) -> dict[str, ArrayLike]:
+        """
+        Decompose the given data into the harmonics.
+
+        :param mesh_data: The data to decompose
+        :return: The coefficients of the data with respect to the harmonics
+        """
+        if isinstance(mesh_data, MeshData):
+            mesh_data = [mesh_data]
+
+        # Pre-compute the mass matrix of the mesh
+        mass = compute_fem_matrices(self._mesh, stiffness=False).mass
+
+        harmonic_coefficients = {}
+        for data in mesh_data:
+            _logger.debug('Decomposing data "%s" into %d harmonics', data.name, len(self))
+            harmonic_coefficients[data.name] = self._harmonics @ (mass @ data.data)
+
+        return harmonic_coefficients
+
+
+    def compose(
+            self,
+            coefficients: ArrayLike | dict[str, ArrayLike],
+    ) -> MeshData | list[MeshData]:
+        """
+        Compose harmonics weighted by the given eigen coefficients (NaNs are ignored).
+
+        :param eigen_coefficients: The weights to use for composing the
+            harmonics. If a single coefficient array is given, the returned data
+            is given the name "harmonic_composition". Otherwise, the returned
+            data is a list of MeshData objects with the same names as the keys
+            in the dictionary.
+        """
+        if not isinstance(coefficients, dict):
+            coefficients = {'harmonic_composition': coefficients}
+
+        composed_data = []
+        for name, coeffs in coefficients.items():
+            _logger.debug('Composing data "%s" from %d harmonics', name, len(self))
+            data = self._harmonics.T @ coeffs
+            composed_data.append(MeshData(self._mesh, name, data))
+
+        return composed_data if len(composed_data) > 1 else composed_data[0]

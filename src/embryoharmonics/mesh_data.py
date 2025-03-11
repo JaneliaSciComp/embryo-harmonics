@@ -1,4 +1,4 @@
-import numpy as np
+from numpy.typing import ArrayLike
 import pyvista as pv
 
 
@@ -9,7 +9,7 @@ class MeshData:
     def __init__(
             self,
             mesh: pv.UnstructuredGrid,
-            name: str, data: np.ndarray
+            name: str, data: ArrayLike
     ):
         """
         Initialize the mesh data.
@@ -36,7 +36,7 @@ class MeshData:
 
 
     @property
-    def data(self) -> np.ndarray:
+    def data(self) -> ArrayLike:
         """The node-wise data.
         """
         return self._data
