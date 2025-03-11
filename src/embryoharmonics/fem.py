@@ -59,10 +59,10 @@ def compute_mass_and_stiffness_3d(
     mass, stiffness = None, None
 
     # Compute the volume of each cell and fix orientation of the cells
-    v_0 = mesh.points[cell_to_vertex[:, 0]]
-    e_10 = mesh.points[cell_to_vertex[:, 1]] - v_0
-    e_20 = mesh.points[cell_to_vertex[:, 2]] - v_0
-    e_30 = mesh.points[cell_to_vertex[:, 3]] - v_0
+    v_0 = mesh.points[cell_to_vertex[:, 0]].astype(np.float64)
+    e_10 = mesh.points[cell_to_vertex[:, 1]].astype(np.float64) - v_0
+    e_20 = mesh.points[cell_to_vertex[:, 2]].astype(np.float64) - v_0
+    e_30 = mesh.points[cell_to_vertex[:, 3]].astype(np.float64) - v_0
     det_element_trafo = np.vecdot(np.cross(e_10, e_20, axis=1), e_30, axis=1)
     swap = det_element_trafo < 0
     if np.any(swap):
@@ -120,9 +120,9 @@ def compute_mass_and_stiffness_2d(
     mass, stiffness = None, None
 
     # Compute the area of each cell and fix orientation of the cells
-    v_0 = mesh.points[cell_to_vertex[:, 0]]
-    e_10 = mesh.points[cell_to_vertex[:, 1]] - v_0
-    e_20 = mesh.points[cell_to_vertex[:, 2]] - v_0
+    v_0 = mesh.points[cell_to_vertex[:, 0]].astype(np.float64)
+    e_10 = mesh.points[cell_to_vertex[:, 1]].astype(np.float64) - v_0
+    e_20 = mesh.points[cell_to_vertex[:, 2]].astype(np.float64) - v_0
     element_normal = np.cross(e_10, e_20)
     det_element_trafo = np.linalg.norm(element_normal, axis=1)
 
