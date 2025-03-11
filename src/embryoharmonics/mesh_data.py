@@ -9,16 +9,17 @@ class MeshData:
     def __init__(
             self,
             mesh: pv.UnstructuredGrid,
-            name: str, data: ArrayLike
+            name: str,
+            data: ArrayLike
     ):
         """
         Initialize the mesh data.
 
-        :param mesh: The triangular/tetrahedral mesh this data is associated with
-        :param name: The name of the data
-        :param data: The node-wise data
+        :param mesh: The triangular/tetrahedral mesh this data is associated with.
+        :param name: The name of the data.
+        :param data: The node-wise data.
         :raise ValueError: If the data length does not match the number of nodes
-            in the mesh
+            in the mesh.
         """
         # Check that the data fits the mesh
         if len(data) != mesh.n_points:
