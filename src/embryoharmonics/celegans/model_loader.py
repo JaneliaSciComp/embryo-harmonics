@@ -13,12 +13,11 @@ _logger = logging.getLogger(__name__)
 
 
 class EmbryoModelLoader:
-    """
-    Class for loading averaged C. elegans geometry models from an HDF5 file.
+    """Loader for averaged C. elegans geometry models in an HDF5 file.
     """
     def __init__(self, file_name: str):
-        """
-        Initialize the embryo model loader.
+        """Initialize the embryo model loader.
+
         :param h5file: The HDF5 file containing the geometry models.
         """
         self.h5file = h5py.File(file_name, "r")
@@ -34,8 +33,8 @@ class EmbryoModelLoader:
 
     @property
     def time_steps(self) -> list[int]:
-        """
-        Get the time steps in the HDF5 file.
+        """Get the time steps in the HDF5 file.
+
         :return: The time steps in the HDF5 file
         """
         # Copy the list to avoid accidental modification
@@ -46,8 +45,8 @@ class EmbryoModelLoader:
             self,
             time_step: int
     ) -> EmbryoModel:
-        """
-        Load an averaged model for the given time step.
+        """Load an averaged model for the given time step.
+
         :param time_step: Which time step to load
         :return: An :class:`EmbryoModel` object containing the geometry data
         """
@@ -86,7 +85,7 @@ class EmbryoModelLoader:
     def __enter__(self):
         return self
 
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.h5file.close()
 

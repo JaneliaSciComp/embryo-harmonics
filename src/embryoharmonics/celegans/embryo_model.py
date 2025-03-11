@@ -14,10 +14,9 @@ _logger = logging.getLogger(__name__)
 
 
 class EmbryoModel:
-    """
-    Class representing the spline data for an embryo model. The model consists
-    of a central spline (which should be straight), and a number of transverse
-    splines that make up the surface of the embryo.
+    """Spline data for an embryo model. The model consists of a central spline
+    (which should be straight), and a number of transverse splines that make up
+    the surface of the embryo.
     The splines are defined on a common (1D) domain; the data for the splines
     was collected at certain points (called seam cells) on the lateral sides of
     the embryo.
@@ -48,9 +47,9 @@ class EmbryoModel:
             self,
             n_interpolation: int = 32,
             mesh_size: float = 5.0
-    ) -> ngs.Mesh:
-        """
-        Generate a volume mesh from the embryo model.
+    ) -> pv.UnstructuredGrid:
+        """Generate a volume mesh from the embryo model.
+
         :param n_interpolation: The number of points to use for interpolating
             the transverse splines for generating the mesh
         :param mesh_size: The maximum mesh size
@@ -66,8 +65,8 @@ def _mesh_embryo_geometry(
         worm_geometry: occ.Compound,
         mesh_size: float
 ) -> ngs.Mesh:
-    """
-    Mesh the geometry of an embryo.
+    """Mesh the geometry of an embryo.
+    
     :param worm_geometry: The geometry of the embryo to mesh
     :param mesh_size: The maximum mesh size
     :return: The volume mesh of the embryo geometry
@@ -82,8 +81,8 @@ def _assemble_embryo_geometry(
         embryo_model: EmbryoModel,
         n_interpolation: int
 ) -> occ.Compound:
-    """
-    Assemble the geometry of the embryo from the given embryo model.
+    """Assemble the geometry of the embryo from the given embryo model.
+
     :param embryo_model: The embryo model
     :param n_interpolation: The number of points to use for interpolating the
         transverse splines for generating the mesh
@@ -113,11 +112,11 @@ def _convert_to_volume_mesh(
         mesh_size: float,
         max_node_distance: float = None
 ) -> tuple[ng.Mesh, dict[int, int]]:
-    """
-    Convert a surface mesh to a volume mesh by adding a single domain inside the
-    surface and no domain outside. If the surface mesh is not closed (i.e.,
+    """Convert a surface mesh to a volume mesh by adding a single domain inside
+    the surface and no domain outside. If the surface mesh is not closed (i.e.,
     meshing fails), close nodes can be identified by a maximum distance
     threshold and merged to close it.
+
     :param surface_mesh: The surface mesh to convert
     :param mesh_size: The maximum mesh size
     :param max_node_distance: Maximum distance between nodes to identify close
@@ -183,9 +182,9 @@ def _rotate_around_z_and_x(
         points: np.ndarray,
         angle: float
 ) -> np.ndarray:
-    """
-    Rotate a set of points (specifying a spline surface) first around the z-axis
-    by a given angle and then around the x-axis by -90 degrees.
+    """Rotate a set of points (specifying a spline surface) first around the
+    z-axis by a given angle and then around the x-axis by -90 degrees.
+
     :param points: The points to be rotated
     :param angle: The angle by which to rotate in the xy-plane in deg
     :return: Coordinates of the rotated points
@@ -205,9 +204,9 @@ def _get_spline_surface(
         n: int,
         i:int
 ) -> occ.SplineSurfaceInterpolation:
-    """
-    Create an NGSolve-OCC surface from two neighboring splines of the embryo geometry.
+    """Create an NGSolve-OCC surface from two neighboring splines of the embryo geometry.
     The resulting surface is the one between the i-th transverse spline and its clockwise neighbor.
+
     :param embryo_model: The embryo model containing the splines
     :param n: The number of points to use for the interpolation (too many points
         can lead to numerical instabilities)
@@ -245,8 +244,8 @@ def _get_spline_surface(
 
 
 def _to_vtk(mesh: ngs.Mesh) -> pv.UnstructuredGrid:
-    """
-    Convert an NGSolve mesh to a pyvista.UnstructuredGrid object.
+    """Convert an NGSolve mesh to a pyvista.UnstructuredGrid object.
+
     :param mesh: The NGSolve mesh to convert
     :return: A :class:`pyvista.UnstructuredGrid` object containing the mesh
     """
