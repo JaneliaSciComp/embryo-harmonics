@@ -52,6 +52,14 @@ class Harmonics:
         return len(self._harmonics)
 
 
+    def __repr__(self):
+        return f"Harmonics(num_mesh_nodes={self._mesh.n_points}, num_harmonics={len(self)})"
+
+
+    def __str__(self):
+        return f"Harmonics with {len(self)} harmonics and {self._mesh.n_points} mesh nodes"
+
+
     @classmethod
     def compute(
             cls,
