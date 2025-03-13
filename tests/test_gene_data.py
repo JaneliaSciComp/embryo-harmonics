@@ -27,7 +27,7 @@ def test_construction_with_incompatible_data_raises_error():
 
 def test_gene_data_as_point_cloud():
     """Test that the resulting point cloud has the correct data."""
-    locations = np.array([[0, 0, 0], [1, 1, 1]])
+    locations = np.array([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])
     activities = np.array([0.5, 0.8])
     gene_data = GeneData("test_gene", locations, activities)
 
