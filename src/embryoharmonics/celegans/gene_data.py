@@ -6,7 +6,7 @@ import numpy as np
 import scipy.sparse.linalg as spla
 import pyvista as pv
 
-from embryoharmonics.fem import compute_fem_matrices
+from embryoharmonics.fem import FemMatrices
 from embryoharmonics.mesh_data import MeshData
 
 
@@ -201,7 +201,7 @@ class PointInterpolator():
             """
             key = (mesh.n_points, mesh.n_cells, mesh.bounds)
             if key not in self._cache:
-                fem_matrices = compute_fem_matrices(mesh, stiffness=False)
+                fem_matrices = FemMatrices.compute_for(mesh, stiffness=False)
                 self._cache[key] = spla.splu(fem_matrices.mass.tocsc())
             return self._cache[key]
 

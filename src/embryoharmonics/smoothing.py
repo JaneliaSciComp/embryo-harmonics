@@ -2,7 +2,7 @@ import abc
 
 import scipy.sparse.linalg as spla
 
-from embryoharmonics.fem import compute_fem_matrices
+from embryoharmonics.fem import FemMatrices
 from embryoharmonics.harmonics import Harmonics
 from embryoharmonics.mesh_data import MeshData
 
@@ -72,7 +72,7 @@ class DiffusionSmoother(Smoother):
         # Set up system matrices for implicit midpoint rule:
         # (M + tau/2 A) d_n = tau A x_n, x_{n+1} = x_n - d_n
         coeff = smoothness ** 2 / n_steps
-        fem_matrices = compute_fem_matrices(mesh)
+        fem_matrices = FemMatrices.compute_for(mesh)
         self.a = coeff * fem_matrices.stiffness
         m_star = fem_matrices.mass + (coeff / 2) * fem_matrices.stiffness
         self.m_lu = spla.splu(m_star.tocsc())

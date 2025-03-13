@@ -3,7 +3,7 @@ import pytest
 
 import pyvista as pv
 
-from embryoharmonics import compute_fem_matrices, Harmonics
+from embryoharmonics import FemMatrices, Harmonics
 
 
 def create_mesh(dim) -> pv.UnstructuredGrid:
@@ -56,7 +56,7 @@ def test_harmonics_are_orthonormal(dim):
     mesh = create_mesh(dim)
     n = mesh.n_points - 1
     harmonics = Harmonics.compute(mesh, n=n)
-    mass = compute_fem_matrices(mesh, stiffness=False).mass
+    mass = FemMatrices.compute_for(mesh, stiffness=False).mass
 
     for i in range(n):
         norm = harmonics[i].data @ mass @ harmonics[i].data

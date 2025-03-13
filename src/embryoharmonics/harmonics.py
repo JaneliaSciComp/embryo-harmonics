@@ -6,7 +6,7 @@ from numpy.typing import ArrayLike
 import pyvista as pv
 import scipy.sparse.linalg as spla
 
-from embryoharmonics.fem import compute_fem_matrices
+from embryoharmonics.fem import FemMatrices
 from embryoharmonics.mesh_data import MeshData
 
 
@@ -78,7 +78,7 @@ class Harmonics:
         """
         # Set up lowest-order finite element problem for the Laplace operator
         _logger.info("Computing the first %d harmonics on the given mesh", n)
-        fem = compute_fem_matrices(mesh)
+        fem = FemMatrices.compute_for(mesh)
         eigvals, eigvecs = spla.eigsh(A=fem.stiffness, M=fem.mass, k=n, which='LM', sigma=0.0)
 
         # Make sure that eigenvalues have the correct sign
@@ -115,7 +115,7 @@ class Harmonics:
             mesh_data = [mesh_data]
 
         # Pre-compute the mass matrix of the mesh
-        mass = compute_fem_matrices(self._mesh, stiffness=False).mass
+        mass = FemMatrices.compute_for(self._mesh, stiffness=False).mass
 
         harmonic_coefficients = {}
         for data in mesh_data:

@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 import pyvista as pv
 
-from embryoharmonics.fem import compute_fem_matrices
+from embryoharmonics import FemMatrices
 
 
 def create_box_mesh(dim: Literal[2, 3]) -> pv.UnstructuredGrid:
@@ -37,7 +37,7 @@ def test_mass_matrix_integrates_constant(dim):
     mesh, vol = create_box_mesh(dim)
     constant = 3.14
 
-    fem = compute_fem_matrices(mesh, stiffness=False)
+    fem = FemMatrices.compute_for(mesh, stiffness=False)
     fun_value = constant * constant_function(mesh.points)
 
     assert (fem.mass @ fun_value).sum() == pytest.approx(constant * vol, rel=1e-2)
@@ -48,7 +48,7 @@ def test_mass_matrix_integrates_linear(dim):
     """The mass matrix integrates linear functions correctly."""
     mesh, vol = create_box_mesh(dim)
 
-    fem = compute_fem_matrices(mesh, stiffness=False)
+    fem = FemMatrices.compute_for(mesh, stiffness=False)
     fun_value = linear_function(mesh.points)
 
     expected = vol * np.ptp(fun_value) / 2
@@ -61,7 +61,7 @@ def test_stiffness_matrix_integrates_constant(dim):
     mesh, _ = create_box_mesh(dim)
     constant = 3.14
 
-    fem = compute_fem_matrices(mesh, mass=False)
+    fem = FemMatrices.compute_for(mesh, mass=False)
     fun_value = constant * constant_function(mesh.points)
 
     assert (fem.stiffness @ fun_value).sum() == pytest.approx(0, abs=1e-2)
@@ -72,7 +72,7 @@ def test_stiffness_matrix_integrates_linear(dim):
     """The stiffness matrix integrates linear functions correctly."""
     mesh, vol = create_box_mesh(dim)
 
-    fem = compute_fem_matrices(mesh, mass=False)
+    fem = FemMatrices.compute_for(mesh, mass=False)
     fun_value = linear_function(mesh.points)
 
     expected = dim * vol

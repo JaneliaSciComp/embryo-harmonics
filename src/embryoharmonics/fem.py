@@ -14,30 +14,31 @@ class FemMatrices:
     stiffness: scs.csr_matrix | None = None
 
 
-def compute_fem_matrices(
-        mesh: pv.UnstructuredGrid,
-        mass: bool = True,
-        stiffness: bool = True
-) -> FemMatrices:
-    """
-    Compute the mass and stiffness matrices for a given 2D or 3D simplicial
-    mesh.
+    @staticmethod
+    def compute_for(
+            mesh: pv.UnstructuredGrid,
+            mass: bool = True,
+            stiffness: bool = True
+    ) -> 'FemMatrices':
+        """
+        Compute the mass and stiffness matrices for a given 2D or 3D simplicial
+        mesh.
 
-    :param mesh: The mesh to compute the matrices on
-    :param mass: Whether to compute the mass matrix
-    :param stiffness: Whether to compute the stiffness matrix
-    :return: The mass and stiffness matrices as sparse matrices
-    """
+        :param mesh: The mesh to compute the matrices on
+        :param mass: Whether to compute the mass matrix
+        :param stiffness: Whether to compute the stiffness matrix
+        :return: The mass and stiffness matrices as sparse matrices
+        """
 
-    # PyVista stores cells as [n_vertices, vertex_1, ..., vertex_n [...]]
-    mesh_dimension = mesh.cells[0] - 1
-    match mesh_dimension:
-        case 3:
-            return compute_mass_and_stiffness_3d(mesh, mass, stiffness)
-        case 2:
-            return compute_mass_and_stiffness_2d(mesh, mass, stiffness)
-        case _:
-            raise ValueError(f"Invalid mesh dimension {mesh_dimension}")
+        # PyVista stores cells as [n_vertices, vertex_1, ..., vertex_n [...]]
+        mesh_dimension = mesh.cells[0] - 1
+        match mesh_dimension:
+            case 3:
+                return compute_mass_and_stiffness_3d(mesh, mass, stiffness)
+            case 2:
+                return compute_mass_and_stiffness_2d(mesh, mass, stiffness)
+            case _:
+                raise ValueError(f"Invalid mesh dimension {mesh_dimension}")
 
 
 def compute_mass_and_stiffness_3d(
