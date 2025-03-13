@@ -87,6 +87,10 @@ plotter.show()
 # %%
 # The gene expression data can also be interpolated on the mesh
 mesh_data = gene_data.interpolate(mesh)
+mesh["data"] = mesh_data.data
+plotter = pv.Plotter()
+plotter.add_mesh_slice(mesh, scalars="data", cmap="turbo")
+plotter.show()
 
 # Since this yields a very sparse data set, it is advisable to smooth the data
 harmonic_smoother = HarmonicSmoother(harmonics)
