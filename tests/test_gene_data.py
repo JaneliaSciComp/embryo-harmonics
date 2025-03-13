@@ -2,34 +2,7 @@ import pytest
 
 import numpy as np
 
-from embryoharmonics import FemMatrices
-from embryoharmonics.celegans import EmbryoModelLoader, GeneData, GeneDataLoader
-
-
-GEOMETRY_PATH = "tests/resources/celegans_models.h5"
-GENE_PATH = "tests/resources/celegans_genedata.h5"
-
-
-@pytest.fixture(scope="module")
-def embryo_mesh():
-    """Generate an embryo mesh for a single time step."""
-    with EmbryoModelLoader(GEOMETRY_PATH) as embryo_model_loader:
-        embryo_model = embryo_model_loader.load(420)
-        mesh = embryo_model.generate_mesh(mesh_size=20)
-        assert mesh.n_cells > 0
-        return mesh
-
-
-@pytest.fixture(scope="module")
-def gene_data_loader():
-    """Load simple test data for a few genes."""
-    return GeneDataLoader(GENE_PATH)
-
-
-@pytest.fixture(scope="module")
-def fem_matrices(embryo_mesh):
-    """Generate the finite element matrices for the embryo mesh."""
-    return FemMatrices.compute_for(embryo_mesh, stiffness=False)
+from embryoharmonics.celegans import GeneData
 
 
 def test_construction_with_arbitrary_data():
@@ -108,7 +81,7 @@ def test_gene_data_loader_load(gene_data_loader):
 
     assert gene_data.name == "cwn-1"
     assert len(gene_data) == gene_data_loader.n_cells
-    
+
 
 def test_removing_nans_works(gene_data_loader):
     """Test that removing nans from the gene data works."""
