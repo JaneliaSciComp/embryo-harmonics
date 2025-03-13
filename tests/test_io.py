@@ -26,7 +26,7 @@ def test_storing_mesh_works(dim):
     with tempfile.TemporaryDirectory() as tmpdirname:
         file_name = os.path.join(tmpdirname, "test.vtu")
 
-        io.store_mesh(file_name, mesh)
+        io.save_mesh(file_name, mesh)
         loaded_mesh = io.load_mesh(file_name)
 
     assert loaded_mesh.n_points == mesh.n_points
@@ -40,7 +40,7 @@ def test_storing_mesh_fails_on_wrong_extension():
         file_name = os.path.join(tmpdirname, "test.stl")
 
         with pytest.raises(ValueError):
-            io.store_mesh(file_name, mesh)
+            io.save_mesh(file_name, mesh)
 
 
 @pytest.mark.parametrize("dim", [2, 3])
@@ -55,7 +55,7 @@ def test_storing_mesh_data_works(dim):
     with tempfile.TemporaryDirectory() as tmpdirname:
         file_name = os.path.join(tmpdirname, "test.h5")
 
-        io.store_mesh_data(file_name, data)
+        io.save_mesh_data(file_name, data)
         loaded_data = io.load_mesh_data(file_name, mesh)
 
     assert len(loaded_data) == len(data)
@@ -74,7 +74,7 @@ def test_storing_harmonics_works(dim):
     with tempfile.TemporaryDirectory() as tmpdirname:
         file_name = os.path.join(tmpdirname, "test.h5")
 
-        io.store_harmonics(file_name, harmonics)
+        io.save_harmonics(file_name, harmonics)
         loaded_data = io.load_harmonics(file_name, mesh)
 
     assert len(loaded_data) == len(harmonics)

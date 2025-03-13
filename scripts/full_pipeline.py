@@ -57,9 +57,9 @@ for i in range(min(N, 5)):
 # %%
 # It's easy to write and read data in the vtk format:
 # from embryoharmonics import io
-# io.store_mesh("embryo.vtu", mesh)
+# io.save_mesh("embryo.vtu", mesh)
 # same_mesh = io.load_mesh("embryo.vtu")
-# io.store_harmonics("harmonics.h5", harmonics)
+# io.save_harmonics("harmonics.h5", harmonics)
 # same_harmonics = io.load_harmonics("harmonics.h5", mesh)
 
 # %%

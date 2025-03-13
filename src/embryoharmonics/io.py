@@ -8,7 +8,7 @@ from embryoharmonics import MeshData
 from embryoharmonics.harmonics import Harmonics
 
 
-def store_mesh(
+def save_mesh(
         file_name: str,
         mesh: pv.UnstructuredGrid
 ):
@@ -44,7 +44,7 @@ def load_mesh(
     return mesh
 
 
-def store_mesh_data(
+def save_mesh_data(
         file_name: str,
         data: MeshData | Iterable[MeshData]
 ):
@@ -97,7 +97,7 @@ def load_mesh_data(
 
 
 
-def store_harmonics(
+def save_harmonics(
         file_name: str,
         harmonics: Harmonics
 ):
@@ -107,7 +107,7 @@ def store_harmonics(
     :param harmonics: The Harmonics object containing the data to store.
     :raises ValueError: If the file name does not end with .h5.
     """
-    store_mesh_data(file_name, list(harmonics))
+    save_mesh_data(file_name, list(harmonics))
     with h5py.File(file_name, 'a') as h5file:
         h5file.create_dataset('/eigenvalues', data=harmonics.eigenvalues)
 
