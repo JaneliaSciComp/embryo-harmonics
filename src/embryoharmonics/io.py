@@ -68,8 +68,6 @@ def save_mesh_data(
     # Concatenate the data and names in the same order
     concatenated_data = np.vstack([d.data for d in data])
     concatenated_names = [d.name for d in data]
-    print(concatenated_names)
-    print(concatenated_data.shape)
 
     with h5py.File(file_name, 'w') as h5file:
         h5file.create_dataset('/data', data=concatenated_data)
