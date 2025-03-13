@@ -274,12 +274,12 @@ class PointInterpolator():
         values = values[~is_outside]
         containing_cells = containing_cells[~is_outside]
 
-        # Compute L2-ortho projection of the pointwise data onto the mesh
-        for loc, cell_id in zip(locations, containing_cells):
+        # Compute L2-orthogonal projection of the pointwise data onto the mesh
+        for loc, val, cell_id in zip(locations, values, containing_cells):
             cell = self.mesh.get_cell(cell_id).point_ids
             points = self.mesh.points[cell]
             element_matrix = np.vstack((points.T, np.ones(4)))
             b = np.append(loc, 1)
-            rhs[cell] += np.linalg.solve(element_matrix, b)
+            rhs[cell] += val * np.linalg.solve(element_matrix, b)
 
         return self.mass_lu.solve(rhs)
