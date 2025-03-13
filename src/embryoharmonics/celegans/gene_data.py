@@ -104,6 +104,42 @@ class GeneDataLoader:
         return list(self._time_to_index.keys())
 
 
+    @property
+    def n_genes(self) -> int:
+        """Get the number of genes in the HDF5 file.
+
+        :return: The number of genes in the HDF5 file
+        """
+        return len(self._gene_to_index)
+
+
+    @property
+    def n_tissues(self) -> int:
+        """Get the number of tissues in the HDF5 file.
+
+        :return: The number of tissues in the HDF5 file
+        """
+        return len(self._tissue_to_index)
+
+
+    @property
+    def n_time_steps(self) -> int:
+        """Get the number of time steps in the HDF5 file.
+
+        :return: The number of time steps in the HDF5 file
+        """
+        return len(self._time_to_index)
+
+
+    @property
+    def n_cells(self) -> int:
+        """Get the number of cells in the HDF5 file.
+
+        :return: The number of cells in the HDF5 file
+        """
+        return self._locations.shape[1]
+
+
     def load(
             self,
             gene_name: str,
@@ -153,7 +189,7 @@ class GeneDataLoader:
         :return: A :class:`GeneData` object containing the tissue data.
         """
         try:
-            i = self._time_to_index[time_step]
+            t = self._time_to_index[time_step]
         except KeyError as e:
             raise ValueError(f"Time step {time_step} not found in the HDF5 file") from e
 
@@ -164,7 +200,7 @@ class GeneDataLoader:
 
         _logger.info("Loading tissue %s at time step %d from '%s'",
                      tissue_name, time_step, self.h5file.filename)
-        return GeneData(tissue_name, self._locations[i, :, :], self._tissues[tissue_index, :])
+        return GeneData(tissue_name, self._locations[t, :, :], self._tissues[tissue_index, :])
 
 
 def _convert_raw_names(raw_names):
