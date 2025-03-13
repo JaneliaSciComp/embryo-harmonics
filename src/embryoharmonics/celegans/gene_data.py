@@ -55,15 +55,15 @@ class GeneData:
 class GeneDataLoader:
     """Loader for gene expression data from an HDF5 file.
     """
-    def __init__(self, h5file: h5py.File):
+    def __init__(self, path: str):
         """Initialize the gene data loader.
 
-        :param h5file: The HDF5 file containing the gene expression data
+        :param path: The path to the HDF5 file containing the gene expression data.
         """
-        self.h5file = h5file
+        self.h5file = h5py.File(path, "r")
 
         # Load all gene names
-        data = h5file["geneact"]
+        data = self.h5file["geneact"]
         self._gene_to_index = _convert_raw_names(data["genes"][:])
         self._tissue_to_index = _convert_raw_names(data["tissue_name"][:])
 

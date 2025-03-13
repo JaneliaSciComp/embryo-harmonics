@@ -1,5 +1,4 @@
 # %%
-import h5py
 import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
@@ -8,12 +7,13 @@ from embryoharmonics import Harmonics, MeshData, HarmonicSmoother, DiffusionSmoo
 from embryoharmonics import celegans
 
 # %%
-PATH = "../tests/resources/celegans_models.h5"
+MODEL_PATH = "../tests/resources/celegans_models.h5"
+GENE_PATH = "../tests/resources/celegans_genedata.h5"
 pv.set_jupyter_backend('client')
 
 # %%
 TIME_STEP = 420
-embryo_model_loader = celegans.EmbryoModelLoader(PATH)
+embryo_model_loader = celegans.EmbryoModelLoader(MODEL_PATH)
 embryo_model = embryo_model_loader.load(TIME_STEP)
 mesh = embryo_model.generate_mesh(mesh_size=5)
 print(f"Number of elements: {mesh.n_cells}")
@@ -64,9 +64,8 @@ for i in range(min(N, 5)):
 
 # %%
 # Gene data can be loaded and smoothly interpolated
-mat_file = h5py.File("/Users/innerbergerm/Data/worm-geometry/4D_transcriptome.mat")
 GENE_NAME = "cwn-1"
-gene_data_loader = celegans.GeneDataLoader(mat_file)
+gene_data_loader = celegans.GeneDataLoader(GENE_PATH)
 gene_data = gene_data_loader.load(GENE_NAME, TIME_STEP)
 
 # Tissue data can be loaded similarly to gene_data
