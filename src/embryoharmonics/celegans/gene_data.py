@@ -264,7 +264,6 @@ class PointInterpolator():
         """
         # Find containing cells, skip points outside the mesh
         containing_cells = self.mesh.find_containing_cell(locations)
-        rhs = np.zeros(self.mesh.n_points)
 
         is_outside: np.ndarray = containing_cells == -1
         _logger.debug("Interpolating %d points, skipping %d points outside the mesh",
@@ -275,11 +274,21 @@ class PointInterpolator():
         containing_cells = containing_cells[~is_outside]
 
         # Compute L2-orthogonal projection of the pointwise data onto the mesh
-        for loc, val, cell_id in zip(locations, values, containing_cells):
-            cell = self.mesh.get_cell(cell_id).point_ids
-            points = self.mesh.points[cell]
-            element_matrix = np.vstack((points.T, np.ones(4)))
-            b = np.append(loc, 1)
-            rhs[cell] += val * np.linalg.solve(element_matrix, b)
+        # Get points of the cells containing the points
+        m = locations.shape[0]
+        cells = self.mesh.cell_connectivity.reshape(-1, 4)[containing_cells]
+        cell_points = self.mesh.points[cells.flatten()].reshape(-1, 4, 3)
+
+        # Compute barycentric coordinates of the points in the cells by solving
+        # a linear system of equations for each point
+        element_matrices = np.concatenate((
+            np.transpose(cell_points, (0, 2, 1)),
+            np.ones((m, 1, 4))
+        ), axis=1)
+        b = np.concatenate((locations, np.ones((m, 1))), axis=1)
+        b = b[:, :, None]
+        barycentric = np.linalg.solve(element_matrices, b)
+        rhs = np.zeros(self.mesh.n_points)
+        np.add.at(rhs, cells.ravel(), (values[:, None] * barycentric.squeeze()).ravel())
 
         return self.mass_lu.solve(rhs)
