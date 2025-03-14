@@ -9,7 +9,6 @@ import numpy as np
 from tqdm import tqdm
 
 from embryoharmonics import celegans, io
-from embryoharmonics import encode_matlab_strings
 
 # %%
 # Set up logging
@@ -67,8 +66,9 @@ logger.info("Compute coefficients for %d times steps and  %d harmonics",
 def write_meta_data(file):
     """Write metadata about the harmonic coefficients to the given HDF5 file."""
     # Write gene and tissue names
-    file.create_dataset('gene_names', data=encode_matlab_strings(gene_data_loader.gene_names))
-    file.create_dataset('tissue_names', data=encode_matlab_strings(gene_data_loader.tissue_names))
+    file.create_dataset('gene_names', data=io.encode_matlab_strings(gene_data_loader.gene_names))
+    file.create_dataset(
+        'tissue_names', data=io.encode_matlab_strings(gene_data_loader.tissue_names))
 
     # Write all time points
     time_points = np.array(time_steps)
@@ -76,7 +76,7 @@ def write_meta_data(file):
 
     # Write harmonic names to match coefficients to harmonics
     harmonic_names = [f"harmonic_{i:03d}" for i in range(n_harmonics)]
-    file.create_dataset('harmonic_names', data=encode_matlab_strings(harmonic_names))
+    file.create_dataset('harmonic_names', data=io.encode_matlab_strings(harmonic_names))
 
 
 # %%

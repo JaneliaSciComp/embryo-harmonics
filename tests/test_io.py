@@ -6,7 +6,7 @@ import pyvista as pv
 import numpy as np
 
 from embryoharmonics import Harmonics, MeshData
-import embryoharmonics.io as io
+from embryoharmonics import io
 
 
 def create_mesh(dim) -> pv.UnstructuredGrid:
@@ -80,3 +80,14 @@ def test_storing_harmonics_works(dim):
     assert len(loaded_data) == len(harmonics)
     assert all(loaded_data.eigenvalues == harmonics.eigenvalues)
     assert all(loaded_data[0].data == harmonics[0].data)
+
+
+@pytest.mark.parametrize("strings", [["foo"], ["foobar", "bar", "baz"]])
+def test_encoding_matlab_strings(strings):
+    """Test that encoding strings to match the matlab format works."""
+    encoded = io.encode_matlab_strings(strings)
+
+    decoded = [s.tobytes().decode('ascii').strip() for s in encoded.astype(np.uint8).T]
+
+    assert len(strings) == len(encoded.T)
+    assert all(s == d for s, d in zip(strings, decoded))
