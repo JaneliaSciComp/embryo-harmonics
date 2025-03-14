@@ -2,8 +2,8 @@ from .harmonics import Harmonics
 from .mesh_data import MeshData
 from .fem import FemMatrices
 from .smoothing import Smoother, HarmonicSmoother, DiffusionSmoother
-from .io import *
+from .utils import encode_matlab_strings
 
 
 __all__ = ["Harmonics", "MeshData", "FemMatrices", "Smoother", "HarmonicSmoother",
-           "DiffusionSmoother", "io"]
+           "DiffusionSmoother", "encode_matlab_strings"]
