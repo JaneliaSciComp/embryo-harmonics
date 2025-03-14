@@ -2,101 +2,122 @@
 import logging
 import os
 import time
+import re
 
 import h5py
 import numpy as np
-import pyvista as pv
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 
-from embryoharmonics import *
-from embryoharmonics._utils import all_harmonic_names
+from embryoharmonics import celegans, io
+from embryoharmonics import encode_matlab_strings
 
 # %%
 # Set up logging
-os.makedirs(os.path.join(os.getcwd(), '..', 'logs'), exist_ok=True)
+log_dir = os.path.join(os.getcwd(), 'logs')
+os.makedirs(log_dir, exist_ok=True)
 logger = logging.getLogger("embryoharmonics")
 logger.setLevel(logging.INFO)
 timestr = time.strftime("%Y%m%d-%H%M%S")
-handler = logging.FileHandler(os.path.join(os.getcwd(), '..', 'logs', f'{timestr}_process_all_genes.log'))
+handler = logging.FileHandler(os.path.join(log_dir, f'process_all_genes_{timestr}.log'))
 formatter = logging.Formatter('[%(asctime)s - %(name)s] %(levelname)s: %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 # %%
-PATH = "/Users/innerbergerm/Data/worm-geometry/4D_transcriptome.mat"
-h5file = h5py.File(PATH, 'r')
-gene_data_loader = GeneDataLoader(h5file)
-time_steps = range(420, 841)
+GENE_PATH = "<your_path_to_celegans_genedata.h5>"
+RESULT_PATH = "<your_path_to_meshes_and_harmonics>"
+gene_data_loader = celegans.GeneDataLoader(GENE_PATH)
 
 # %%
-root = os.path.normpath(os.path.join(os.getcwd(), '..', 'results'))
-os.makedirs(root, exist_ok=True)
+def find_and_sort_files(directory, regexp):
+    """Find files matching a regular expression in a directory and extract time steps from them.
+    """
+    file_pattern = re.compile(regexp)
+    pairs = [(file, int(match.group(1)))
+             for file in os.listdir(directory)
+             if (match := file_pattern.match(file)) is not None]
+
+    # Sort both lists based on the extracted numbers
+    sorted_pairs = sorted(pairs, key=lambda pair: pair[1])
+    return zip(*sorted_pairs) if sorted_pairs else ([], [])
+
+# Discover mesh and harmonics files and make sure the times match
+mesh_files, mesh_times = find_and_sort_files(RESULT_PATH, r"data_(\d+)\.vtu")
+harmonic_files, harmonic_times = find_and_sort_files(RESULT_PATH, r"harmonics_(\d+)\.h5")
+if len(mesh_files) == 0 or len(harmonic_files) == 0:
+    raise ValueError("No mesh or harmonics files found in the given directory!")
+if mesh_times != harmonic_times:
+    raise ValueError("Mesh and harmonics files do not match!")
+logger.info("Found %d mesh and harmonics files", len(mesh_files))
 
 # %%
-# Find out at which time steps gene data is actually available
-actual_time_steps = h5file['geneact/timepoints'][0]
-time_steps = [t for t in time_steps if t in actual_time_steps]
+# Find out at which time steps gene data is actually available and how many harmonics we have
+time_steps = [t for t in mesh_times if t in gene_data_loader.time_steps]
+if len(time_steps) == 0:
+    raise ValueError("No matching time steps found between mesh files and gene data!")
 
-# %%
-# Find out how many harmonics were stored
-# The order of the harmonics will match the order of the coefficients computed below
-first_geometry = pv.read(os.path.join(root, "data_420.vtu"))
-all_harmonics = all_harmonic_names(first_geometry)
+first_mesh = io.load_mesh(os.path.join(RESULT_PATH, mesh_files[0]))
+first_harmonics = io.load_harmonics(os.path.join(RESULT_PATH, harmonic_files[0]), first_mesh)
+n_harmonics = len(first_harmonics)
+logger.info("Compute coefficients for %d times steps and  %d harmonics",
+            len(time_steps), n_harmonics)
 
 
 # %%
 def write_meta_data(file):
-    # Write gene names (same format as matlab char arrays are stored in mat files: an array of space padded ascii-chars)
-    max_gene_name_length = max(len(name) for name in gene_data_loader.gene_names)
-    gene_names = [name.ljust(max_gene_name_length).encode('ascii') for name in gene_data_loader.gene_names]
-    gene_names = np.array([np.frombuffer(name, dtype=np.uint8) for name in gene_names]).T.astype(np.uint16)
-    file.create_dataset('gene_names', data=gene_names)
-
-    # Write tissue names (same format as matlab char arrays are stored in mat files: an array of space padded ascii-chars)
-    max_tissue_name_length = max(len(name) for name in gene_data_loader.tissue_names)
-    tissue_names = [name.ljust(max_tissue_name_length).encode('ascii') for name in gene_data_loader.tissue_names]
-    tissue_names = np.array([np.frombuffer(gene_names[:, i], dtype=np.uint8) for i in range(len(tissue_names))]).T.astype(np.uint16)
-    file.create_dataset('tissue_names', data=tissue_names)
+    """Write metadata about the harmonic coefficients to the given HDF5 file."""
+    # Write gene and tissue names
+    file.create_dataset('gene_names', data=encode_matlab_strings(gene_data_loader.gene_names))
+    file.create_dataset('tissue_names', data=encode_matlab_strings(gene_data_loader.tissue_names))
 
     # Write all time points
-    time_points = np.array(list(time_steps))
+    time_points = np.array(time_steps)
     file.create_dataset('time_points', data=time_points)
 
     # Write harmonic names to match coefficients to harmonics
-    harmonic_names = [name.encode('ascii') for name in all_harmonics]
-    harmonic_names = np.array([np.frombuffer(name, dtype=np.uint8) for name in harmonic_names]).T.astype(np.uint16)
-    file.create_dataset('harmonic_names', data=harmonic_names)
+    harmonic_names = [f"harmonic_{i:03d}" for i in range(n_harmonics)]
+    file.create_dataset('harmonic_names', data=encode_matlab_strings(harmonic_names))
 
 
 # %%
 def write_data(file):
-    gene_names = gene_data_loader.gene_names
-    tissue_names = gene_data_loader.tissue_names
-
+    """Write the harmonic coefficients for all genes and tissues to the given HDF5 file."""
     # Set up arrays of coefficients to be filled
-    gene_coeff = np.zeros((len(time_steps), len(gene_names), len(all_harmonics)), dtype=np.float64)
-    tissue_coeff = np.zeros((len(time_steps), len(tissue_names), len(all_harmonics)), dtype=np.float64)
+    gdl = gene_data_loader
+    gene_coeff = np.zeros((gdl.n_time_steps, gdl.n_genes, n_harmonics), dtype=np.float64)
+    tissue_coeff = np.zeros((gdl.n_time_steps, gdl.n_tissues, n_harmonics), dtype=np.float64)
+    logger.info("Preallocated arrays for %d time steps, %d genes and %d tissues",
+                gdl.n_time_steps, gdl.n_genes, gdl.n_tissues)
 
     for i, t in enumerate(tqdm(time_steps)):
-        # Load the mesh for the current time step and compute coefficients for all genes and tissues
-        pv_data = pv.read(os.path.join(root, f"data_{t:03d}.vtu"))
+        # Load the current time step and compute coefficients for all genes and tissues
+        logger.info("Processing time step %d", t)
+        mesh = io.load_mesh(os.path.join(RESULT_PATH, mesh_files[i]))
+        harmonics = io.load_harmonics(os.path.join(RESULT_PATH, harmonic_files[i]), mesh)
 
-        gene_data = [gene_data_loader.load(gene, t) for gene in gene_names]
-        tissue_data = [gene_data_loader.load_tissue(tissue, t) for tissue in tissue_names]
-        eigen_coefficients = compute_harmonic_coefficients(pv_data, gene_data + tissue_data)
+        gene_data = [gdl.load(gene, t).interpolate(mesh)
+                     for gene in gdl.gene_names]
+        tissue_data = [gdl.load_tissue(tissue, t).interpolate(mesh)
+                       for tissue in gdl.tissue_names]
+        eigen_coefficients = harmonics.decompose(gene_data + tissue_data)
 
         # Sort coefficients into the preallocated arrays
-        for j, name in enumerate(gene_names):
+        for j, name in enumerate(gdl.gene_names):
             gene_coeff[i, j, :] = eigen_coefficients[name]
-        for j, name in enumerate(tissue_names):
+        for j, name in enumerate(gdl.tissue_names):
             tissue_coeff[i, j, :] = eigen_coefficients[name]
 
+    logger.info("Write %d gene and %d tissue coefficients to disk", gdl.n_genes, gdl.n_tissues)
     file.create_dataset('gene_coefficients', data=gene_coeff)
     file.create_dataset('tissue_coefficients', data=tissue_coeff)
 
 
 # %%
 # Execute and write everything
-with h5py.File(os.path.join(root, 'eigen_coefficients.h5'), 'w') as target_file:
+target_file_name = os.path.join(RESULT_PATH, 'harmonic_coefficients.h5')
+with h5py.File(target_file_name, 'w') as target_file:
+    logger.info("Write data to %s", target_file_name)
     write_meta_data(target_file)
     write_data(target_file)
+
+# %%
