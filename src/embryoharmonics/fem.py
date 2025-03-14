@@ -13,6 +13,15 @@ class FemMatrices:
     mass: scs.csr_matrix | None = None
     stiffness: scs.csr_matrix | None = None
 
+    def __post_init__(self):
+        mass_is_defined = self.mass is not None
+        stiffness_is_defined = self.stiffness is not None
+
+        if not mass_is_defined and not stiffness_is_defined:
+            raise ValueError("Either mass or stiffness matrix must be defined")
+
+        if mass_is_defined and stiffness_is_defined and self.mass.shape != self.stiffness.shape:
+            raise ValueError("Mass and stiffness matrices must have the same shape")
 
     @staticmethod
     def compute_for(
