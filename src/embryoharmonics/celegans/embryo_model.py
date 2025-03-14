@@ -258,3 +258,66 @@ def _to_vtk(mesh: ngs.Mesh) -> pv.UnstructuredGrid:
         cell_types.append(pv.CellType.TETRA)
 
     return pv.UnstructuredGrid(cells, cell_types, points)
+
+
+def transform_mesh(
+        source: pv.UnstructuredGrid,
+        target: pv.UnstructuredGrid,
+        *,
+        fudge_factor: float = 1e-4,
+) -> pv.UnstructuredGrid:
+    """Transform the source mesh to match the outline of a target mesh (both are
+    supposed to be embryo geometries). The source mesh is streched in the z and
+    radial direction to match the target mesh.
+
+    :param source: a mesh that is transformed in place to match the target geometry.
+    :param target: a second mesh with a kind of similar shape.
+    :param fudge_factor: a small number to make sure the transformed source
+        stays inside the target.
+    :return: The transformed source mesh.
+    """
+    transformed = source.copy(deep=True)
+    x, y, z = transformed.points[:, 0], transformed.points[:, 1], transformed.points[:, 2]
+
+    # Stretch points in z direction (shifting by the center to respect the fudge factor)
+    _, x_src_max, _, y_src_max, z_src_min, z_src_max = transformed.bounds
+    _, x_trg_max, _, y_trg_max, z_trg_min, z_trg_max = target.bounds
+
+    z_src_center = (z_src_min + z_src_max) / 2
+    z_trg_center = (z_trg_min + z_trg_max) / 2
+    z_factor = (z_trg_max - z_trg_min) * (1 - fudge_factor) / (z_src_max - z_src_min)
+    transformed.points[:, 2] = (z - z_src_center) * z_factor + z_trg_center
+
+    # Stretch points in radial direction
+    r = np.sqrt(x**2 + y**2)
+    theta = np.arctan2(y, x)
+    r_factor = np.ones_like(r)
+
+    surface_src = transformed.extract_surface()
+    surface_trg = target.extract_surface()
+    surface_indices = transformed.surface_indices()
+
+    r_max = np.max([np.sqrt(x_trg_max**2 + y_trg_max**2), np.sqrt(x_src_max**2 + y_src_max**2)])
+    ray_start = np.column_stack([np.zeros_like(x), np.zeros_like(y), z])
+    ray_end = np.column_stack([np.cos(theta) * r_max * 1.1, np.sin(theta) * r_max * 1.1, z])
+
+    for i, r_current in enumerate(r):
+        if np.isclose(r_current, 0):
+            r_factor[i] = 1
+            continue
+
+        # Find the distance to the target surface
+        point, _ = surface_trg.ray_trace(ray_start[i], ray_end[i])
+        r_surf_trg = np.linalg.norm(point[:, :2])
+
+        if i in surface_indices:
+            # Easy: just project to the target surface
+            r_factor[i] = r_surf_trg / r_current
+        else:
+            # Harder: find the distance to the source mesh surface and stretch accordingly
+            point, _ = surface_src.ray_trace(ray_start[i], ray_end[i])
+            r_surf_src = np.linalg.norm(point[:, :2])
+            r_factor[i] = r_surf_trg / r_surf_src
+
+    transformed.points[:, :2] *= r_factor[:, None] * (1 - fudge_factor)
+    return transformed

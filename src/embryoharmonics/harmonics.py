@@ -1,7 +1,6 @@
 import logging
 from typing import Iterable
 
-import numpy as np
 from numpy.typing import ArrayLike
 import pyvista as pv
 import scipy.sparse.linalg as spla
