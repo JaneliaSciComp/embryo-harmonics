@@ -73,6 +73,7 @@ def test_gene_data_loader_time_steps(gene_data_loader):
     time_steps = gene_data_loader.time_steps
 
     assert len(time_steps) == gene_data_loader.n_time_steps
+    assert isinstance(time_steps[0], int)
 
 
 def test_gene_data_loader_load(gene_data_loader):

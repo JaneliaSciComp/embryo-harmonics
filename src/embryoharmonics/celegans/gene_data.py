@@ -69,7 +69,7 @@ class GeneDataLoader:
 
         # Load all time steps
         time = data["timepoints"][0]
-        self._time_to_index = {time[i]: i for i in range(len(time))}
+        self._time_to_index = {int(t): i for i, t in enumerate(time)}
 
         # Store handles to the gene expression data
         self._gene_activities = data["data"]
