@@ -1,11 +1,19 @@
 # %%
+import os
+
 import numpy as np
 import matplotlib.pyplot as plt
 import pyvista as pv
 
+from embryoharmonics import celegans
+from embryoharmonics import Harmonics, FemMatrices
+
 # %%
-mesh_earlier = pv.read( "/Users/innerbergerm/Data/worm-geometry/example-geometries/data_420.vtu")
-mesh_later = pv.read( "/Users/innerbergerm/Data/worm-geometry/example-geometries/data_421.vtu")
+CWD = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(CWD, '..', '..', 'tests', 'resources', 'celegans_models.h5')
+model_loader = celegans.EmbryoModelLoader(MODEL_PATH)
+mesh_earlier = model_loader.load(420).generate_mesh(mesh_size=10)
+mesh_later = model_loader.load(421).generate_mesh(mesh_size=10)
 pv.set_jupyter_backend('client')
 print(f"Earlier timestep bounds: {mesh_earlier.bounds}")
 print(f"Later timestep bounds: {mesh_later.bounds}")
@@ -16,107 +24,65 @@ print(f"Later timestep bounds: {mesh_later.bounds}")
 # mesh_later.plot()
 
 # %%
-def transform_mesh(
-        source: pv.UnstructuredGrid,
-        target: pv.UnstructuredGrid,
-        *,
-        fudge_factor: float = 1e-4,
-) -> None:
-    """
-    Transform the source mesh to a target mesh (both are supposed to be embryo geometries).
-    :param source: a mesh that is transformed in place to match the target geometry
-    :param target: a second mesh with a kind of similar shape
-    :param fudge_factor: a small number to make sure the transformed source stays inside the target
-    """
-    x, y, z = source.points[:, 0], source.points[:, 1], source.points[:, 2]
+# Compute some harmonics for the two meshes
+N = 100
+harmonics_earlier = Harmonics.compute(mesh_earlier, n=N)
+harmonics_later = Harmonics.compute(mesh_later, n=N)
 
-    # Stretch points in z direction (shifting by the center to respect the fudge factor)
-    _, x_src_max, _, y_src_max, z_src_min, z_src_max = source.bounds
-    _, x_trg_max, _, y_trg_max, z_trg_min, z_trg_max = target.bounds
-
-    z_src_center = (z_src_min + z_src_max) / 2
-    z_trg_center = (z_trg_min + z_trg_max) / 2
-    z_factor = (z_trg_max - z_trg_min) * (1 - fudge_factor) / (z_src_max - z_src_min)
-    source.points[:, 2] = (z - z_src_center) * z_factor + z_trg_center
-
-    # Stretch points in radial direction
-    r = np.sqrt(x**2 + y**2)
-    theta = np.arctan2(y, x)
-    r_factor = np.ones_like(r)
-
-    surface_src = source.extract_surface()
-    surface_trg = target.extract_surface()
-    surface_indices = source.surface_indices()
-
-    r_max = np.max([np.sqrt(x_trg_max**2 + y_trg_max**2), np.sqrt(x_src_max**2 + y_src_max**2)])
-    ray_start = np.column_stack([np.zeros_like(x), np.zeros_like(y), z])
-    ray_end = np.column_stack([np.cos(theta) * r_max * 1.1, np.sin(theta) * r_max * 1.1, z])
-
-    for i, r_current in enumerate(r):
-        if np.isclose(r_current, 0):
-            r_factor[i] = 1
-            continue
-
-        # Find the distance to the target surface
-        point, _ = surface_trg.ray_trace(ray_start[i], ray_end[i])
-        r_surf_trg = np.linalg.norm(point[:, :2])
-
-        if i in surface_indices:
-            # Easy: just project to the target surface
-            r_factor[i] = r_surf_trg / r_current
-        else:
-            # Harder: find the distance to the source mesh surface and stretch accordingly
-            point, _ = surface_src.ray_trace(ray_start[i], ray_end[i])
-            r_surf_src = np.linalg.norm(point[:, :2])
-            r_factor[i] = r_surf_trg / r_surf_src
-
-    source.points[:, :2] *= r_factor[:, None] * (1 - fudge_factor)
-
-transform_mesh(mesh_earlier, mesh_later)
+# %%
+# Transform the earlier mesh to the later mesh
+mesh_transformed = celegans.transform_mesh(mesh_earlier, mesh_later)
 print(f"Earlier timestep bounds after transformation: {mesh_earlier.bounds}")
 
 # %%
-# Weed out some of the harmonics for testing purposes
-names_to_keep = [f"harmonic_{i:03}" for i in range(100)]
-for name in mesh_earlier.array_names:
-    if name not in names_to_keep:
-        mesh_earlier.point_data.remove(name)
-        mesh_later.point_data.remove(name)
-resampled = mesh_earlier.sample(mesh_later)
+# Resample harmonics from earlier timestep to later timestep
+harmonics_earlier = list(harmonics_earlier)
+resampled_earlier = [
+    h.resample(mesh_later, project_outside_data=True) for h in harmonics_earlier
+]
+harmonics_later = list(harmonics_later)
 
 # %%
-# Compare harmonics numerically
-# TODO: the dot product should feature the mass matrix; refactor so that mass is always available
-dot_products = np.zeros((len(names_to_keep), len(names_to_keep)))
-for i, name_i in enumerate(names_to_keep):
-    for j, name_j in enumerate(names_to_keep):
-        dot_products[i, j] = np.dot(resampled[name_i], mesh_earlier[name_j])
+# Compare harmonics numerically by computing the dot product between the two
+# sets on the same mesh. The dot product is done using the mass matrix of the
+# mesh, so that the dot product is invariant to the local mesh size.
+dot_products = np.zeros((len(harmonics_earlier), len(harmonics_later)))
+fem = FemMatrices.compute_for(mesh_later, stiffness=False)
+for i, hi in enumerate(resampled_earlier):
+    for j, hj in enumerate(harmonics_later):
+        dot_products[i, j] = hj.data.dot(fem.mass @ hi.data)
 plt.imshow(dot_products)
+plt.clim(-1, 1)
+plt.colorbar()
 
 # %%
 # Find rearrangement of harmonics between time steps, e.g., 13 and 14 are swapped
-# TODO: some harmonics have a different sign in different time steps -> invert coefficients!
 earlier_to_later = np.argmax(np.abs(dot_products), axis=1)
 for i, idx in enumerate(earlier_to_later):
     if i != idx:
-        print(f"{i:03} -> {idx:03}")
+        sign_str = " (sign flip)" if dot_products[i, idx] < 0 else ""
+        print(f"{i:03} -> {idx:03}" + sign_str)
 
 # %%
 # Compare harmonics visually (13 is swapped with 14, but 13->14 has a wrong sign)
-earlier_index = 14
-later_index = earlier_to_later[earlier_index]
+EARLIER_IDX = 13
+later_index = earlier_to_later[EARLIER_IDX]
 later_name = f"harmonic_{later_index:03}"
-earlier_name = f"harmonic_{earlier_index:03}"
+earlier_name = f"harmonic_{EARLIER_IDX:03}"
 
 p = pv.Plotter(shape=(1, 3))
 # Later timestep
-p.add_mesh(mesh_later, scalars=later_name)
+sign = -1 if dot_products[EARLIER_IDX, later_index] < 0 else 1
+p.add_mesh(mesh_later, scalars=sign * harmonics_later[later_index].data)
+p.add_text(f"{later_name} (later)")
 p.subplot(0, 1)
 # Earlier timestep resampled to later
-p.add_mesh(resampled, scalars=later_name)
+p.add_mesh(mesh_transformed, scalars=harmonics_earlier[EARLIER_IDX].data)
+p.add_text(f"{earlier_name} (resampled)")
 p.subplot(0, 2)
 # Earlier timestep
-p.add_mesh(mesh_earlier, scalars=earlier_name)
+p.add_mesh(mesh_earlier, scalars=harmonics_earlier[EARLIER_IDX].data)
+p.add_text(f"{earlier_name} (earlier)")
 p.link_views()
 p.show()
 
