@@ -81,10 +81,6 @@ class Harmonics:
         fem = FemMatrices.compute_for(mesh)
         eigvals, eigvecs = spla.eigsh(A=fem.stiffness, M=fem.mass, k=n, which='LM', sigma=0.0)
 
-        # Make sure that eigenvalues have the correct sign
-        integrals = np.sum(fem.mass @ eigvecs, axis=0)
-        eigvecs[:, integrals < 0] *= -1
-
         return Harmonics(mesh, eigvecs.T, eigvals)
 
 
