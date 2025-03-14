@@ -1,5 +1,8 @@
+import functools
+import hashlib
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 import h5py
 import numpy as np
@@ -37,8 +40,7 @@ class GeneData:
         :param mesh: The mesh to interpolate the gene expression data onto
         :return: A :class:`MeshData` object containing the interpolated data
         """
-        interpolator = PointInterpolator(mesh)
-        interpolated_data = interpolator.interpolate(self.locations, self.activities)
+        interpolated_data = _interpolate(mesh, self.locations, self.activities)
         return MeshData(mesh, self.name, interpolated_data)
 
 
@@ -222,73 +224,115 @@ def _filter_nan_values(
     return locations[not_nan], activities[not_nan]
 
 
-class PointInterpolator():
-    """Interpolates pointwise data onto a mesh.
+def _interpolate(
+        mesh: pv.UnstructuredGrid,
+        locations: np.ndarray,
+        values: np.ndarray
+) -> np.ndarray:
+    """Interpolate the given point cloud data onto the mesh using the L2-orthogonal
+    projection onto the lowest-order finite element space of the mesh.
+
+    :param mesh: The mesh to interpolate the data onto.
+    :param locations: The locations of the data points (n, 3).
+    :param values: The values of the data points (n,).
+    :return: The interpolated data.
     """
-    class LuDecompositionCache:
-        """Cache for LU decompositions of the mass matrix based on the mesh size.
+    # Compute the LU decomposition of the mass matrix for orthogonal projection
+    # Find containing cells, skip points outside the mesh
+    mass_lu, containing_cells = _interpolation_details(mesh, locations)
+
+    is_outside: np.ndarray = containing_cells == -1
+    _logger.debug("Interpolating %d points, skipping %d points outside the mesh",
+                    len(locations), np.sum(is_outside))
+
+    locations = locations[~is_outside]
+    values = values[~is_outside]
+    containing_cells = containing_cells[~is_outside]
+
+    # Compute L2-orthogonal projection of the pointwise data onto the mesh
+    # Get points of the cells containing the points
+    m = locations.shape[0]
+    cells = mesh.cell_connectivity.reshape(-1, 4)[containing_cells]
+    cell_points = mesh.points[cells.flatten()].reshape(-1, 4, 3)
+
+    # Compute barycentric coordinates of the points in the cells by solving
+    # a linear system of equations for each point
+    element_matrices = np.concatenate((
+        np.transpose(cell_points, (0, 2, 1)),
+        np.ones((m, 1, 4))
+    ), axis=1)
+    b = np.concatenate((locations, np.ones((m, 1))), axis=1)
+    b = b[:, :, None]
+    barycentric = np.linalg.solve(element_matrices, b)
+    rhs = np.zeros(mesh.n_points)
+    np.add.at(rhs, cells.ravel(), (values[:, None] * barycentric.squeeze()).ravel())
+
+    return mass_lu.solve(rhs)
+
+
+def _interpolation_details(
+        mesh: pv.UnstructuredGrid,
+        locations: np.ndarray
+) -> tuple[spla.SuperLU, np.ndarray]:
+    """Return LU decomposition of the interpolation matrix for the given mesh
+    and mesh cells containing the given locations.
+    """
+    # Make locations, points, and cells hashable
+    # This is some effort, but still a lot less than the cost of recomputing the
+    # LU decomposition and the mesh query for each interpolation
+    hashable_locations = HashableWrapper(locations, [locations])
+    hashable_mesh = HashableWrapper(mesh, [mesh.points, mesh.cells])
+
+    return _compute_lu(hashable_mesh), _compute_containing_cells(hashable_mesh, hashable_locations)
+
+
+class HashableWrapper:
+    """A wrapper class to make various numpy arrays hashable for caching
+    purposes.
+    """
+    def __init__(self, data: Any, arrays_to_hash: list[np.ndarray]):
+        """Set up the wrapper to hash the given data.
+
+        :param data: The data to wrap.
+        :param arrays_to_hash: The arrays to compute the hash from.
         """
-        def __init__(self):
-            self._cache = {}
+        self.data = data
 
-        def get(self, mesh: pv.UnstructuredGrid) -> 'PointInterpolator':
-            """Cache the LU decomposition of the mass matrix based on mesh
-            properties that are unlikely to be the same for different meshes.
-            """
-            key = (mesh.n_points, mesh.n_cells, mesh.bounds)
-            if key not in self._cache:
-                fem_matrices = FemMatrices.compute_for(mesh, stiffness=False)
-                self._cache[key] = spla.splu(fem_matrices.mass.tocsc())
-            return self._cache[key]
+        hash_accumulator = hashlib.md5(np.ascontiguousarray(arrays_to_hash[0]).data)
+        for array in arrays_to_hash[1:]:
+            hash_accumulator.update(np.ascontiguousarray(array).data)
+        self.checksum = hash_accumulator.hexdigest()
 
+    def __hash__(self):
+        return hash(self.checksum)
 
-    # Create a global cache instance
-    lu_cache = LuDecompositionCache()
+    def __eq__(self, other):
+        if isinstance(other, HashableWrapper):
+            return np.array_equal(self.checksum, other.checksum)
+        return False
 
 
-    def __init__(self, mesh: pv.UnstructuredGrid):
-        """Initialize the point interpolator.
+@functools.lru_cache(maxsize=5)
+def _compute_lu(
+        mesh_wrapper: HashableWrapper,
+) -> spla.splu:
+    """Compute the LU decomposition of the mass matrix of the given mesh.
+    """
+    _logger.debug("Computing LU decomposition for mesh with %d points and %d cells",
+                    mesh_wrapper.data.n_points, mesh_wrapper.data.n_cells)
+    fem_matrices = FemMatrices.compute_for(mesh_wrapper.data, stiffness=False)
+    _logger.debug("LU decomposition done")
+    return spla.splu(fem_matrices.mass.tocsc())
 
-        :param mesh: The mesh to interpolate the data onto.
-        """
-        self.mesh = mesh
-        self.mass_lu = PointInterpolator.lu_cache.get(mesh)
 
-
-    def interpolate(self, locations: np.ndarray, values: np.ndarray) -> np.ndarray:
-        """Interpolate the data from the point cloud onto the mesh.
-
-        :param locations: The locations of the data points (n, 3).
-        :param values: The values of the data points (n,).
-        :return: The interpolated data.
-        """
-        # Find containing cells, skip points outside the mesh
-        containing_cells = self.mesh.find_containing_cell(locations)
-
-        is_outside: np.ndarray = containing_cells == -1
-        _logger.debug("Interpolating %d points, skipping %d points outside the mesh",
-                      len(locations), np.sum(is_outside))
-
-        locations = locations[~is_outside]
-        values = values[~is_outside]
-        containing_cells = containing_cells[~is_outside]
-
-        # Compute L2-orthogonal projection of the pointwise data onto the mesh
-        # Get points of the cells containing the points
-        m = locations.shape[0]
-        cells = self.mesh.cell_connectivity.reshape(-1, 4)[containing_cells]
-        cell_points = self.mesh.points[cells.flatten()].reshape(-1, 4, 3)
-
-        # Compute barycentric coordinates of the points in the cells by solving
-        # a linear system of equations for each point
-        element_matrices = np.concatenate((
-            np.transpose(cell_points, (0, 2, 1)),
-            np.ones((m, 1, 4))
-        ), axis=1)
-        b = np.concatenate((locations, np.ones((m, 1))), axis=1)
-        b = b[:, :, None]
-        barycentric = np.linalg.solve(element_matrices, b)
-        rhs = np.zeros(self.mesh.n_points)
-        np.add.at(rhs, cells.ravel(), (values[:, None] * barycentric.squeeze()).ravel())
-
-        return self.mass_lu.solve(rhs)
+@functools.lru_cache(maxsize=50)
+def _compute_containing_cells(
+        mesh_wrapper: HashableWrapper,
+        locations_wrapper: HashableWrapper
+) -> np.ndarray:
+    """Compute the cells containing the given locations in the given mesh."""
+    mesh = mesh_wrapper.data
+    locations = locations_wrapper.data
+    _logger.debug("Finding containing cells for %d points in mesh with %d points and %d cells",
+                    len(locations), mesh.n_points, mesh.n_cells)
+    return mesh.find_containing_cell(locations)
