@@ -1,23 +1,19 @@
 # %%
-import h5py
 import numpy as np
 from matplotlib import pyplot as plt
 
-from embryoharmonics import EmbryoModelLoader
-
-# %%
-# Open HDF5 file
-PATH = "/Users/innerbergerm/Data/worm-geometry/celegans_avg_models_421_minutes_samples_2024_12_04.h5"
-h5file = h5py.File(PATH, 'r')
+from embryoharmonics import celegans
 
 # %%
 # Load all splines for given time step
+PATH = "../tests/resources/celegans_models.h5"
 TIME_STEP = 420
-embryo_model_loader = EmbryoModelLoader(h5file)
+embryo_model_loader = celegans.EmbryoModelLoader(PATH)
 embryo_model = embryo_model_loader.load(TIME_STEP)
 
 # %%
-# Seam cells are the marker cells on the left and right of the embryo by which the straightening was done
+# Seam cells are the marker cells on the left and right of the embryo by which
+# the straightening was done
 print(f"names: {embryo_model.seam_cells}")
 
 # %%
@@ -55,3 +51,5 @@ for i in range(32):
 ax.plot(0, 0, marker='$\\bigotimes$', markersize=15)
 ax.text(3, 0, "z-axis")
 plt.show()
+
+# %%

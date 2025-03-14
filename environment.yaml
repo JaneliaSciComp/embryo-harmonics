@@ -8,6 +8,7 @@ dependencies:
   - scipy
   - matplotlib
   - pytest
+  - pytest-cov
   - pyvista==0.44.2 
   - trame
   - trame-vtk

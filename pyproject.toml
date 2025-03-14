@@ -1,6 +1,6 @@
 [project]
 name = "embryoharmonics"
-version = "0.1.0"
+version = "0.2.0"
 description = "Analyzing biological data using harmonical analysis"
 requires-python = ">= 3.12"
 readme = "README.md"
