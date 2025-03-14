@@ -230,60 +230,40 @@ def _interpolate(
         values: np.ndarray
 ) -> np.ndarray:
     """Interpolate the given point cloud data onto the mesh using the L2-orthogonal
-    projection onto the lowest-order finite element space of the mesh.
+    projection onto the lowest-order finite element space of the mesh. NaN values
+    are ignored.
 
     :param mesh: The mesh to interpolate the data onto.
     :param locations: The locations of the data points (n, 3).
     :param values: The values of the data points (n,).
     :return: The interpolated data.
     """
-    # Compute the LU decomposition of the mass matrix for orthogonal projection
-    # Find containing cells, skip points outside the mesh
-    mass_lu, containing_cells = _interpolation_details(mesh, locations)
-
-    is_outside: np.ndarray = containing_cells == -1
-    _logger.debug("Interpolating %d points, skipping %d points outside the mesh",
-                    len(locations), np.sum(is_outside))
-
-    locations = locations[~is_outside]
-    values = values[~is_outside]
-    containing_cells = containing_cells[~is_outside]
-
-    # Compute L2-orthogonal projection of the pointwise data onto the mesh
-    # Get points of the cells containing the points
-    m = locations.shape[0]
-    cells = mesh.cell_connectivity.reshape(-1, 4)[containing_cells]
-    cell_points = mesh.points[cells.flatten()].reshape(-1, 4, 3)
-
-    # Compute barycentric coordinates of the points in the cells by solving
-    # a linear system of equations for each point
-    element_matrices = np.concatenate((
-        np.transpose(cell_points, (0, 2, 1)),
-        np.ones((m, 1, 4))
-    ), axis=1)
-    b = np.concatenate((locations, np.ones((m, 1))), axis=1)
-    b = b[:, :, None]
-    barycentric = np.linalg.solve(element_matrices, b)
-    rhs = np.zeros(mesh.n_points)
-    np.add.at(rhs, cells.ravel(), (values[:, None] * barycentric.squeeze()).ravel())
-
-    return mass_lu.solve(rhs)
-
-
-def _interpolation_details(
-        mesh: pv.UnstructuredGrid,
-        locations: np.ndarray
-) -> tuple[spla.SuperLU, np.ndarray]:
-    """Return LU decomposition of the interpolation matrix for the given mesh
-    and mesh cells containing the given locations.
-    """
     # Make locations, points, and cells hashable
     # This is some effort, but still a lot less than the cost of recomputing the
     # LU decomposition and the mesh query for each interpolation
-    hashable_locations = HashableWrapper(locations, [locations])
-    hashable_mesh = HashableWrapper(mesh, [mesh.points, mesh.cells])
+    mesh_wrapper = HashableWrapper(mesh, [mesh.points, mesh.cells])
+    locations_wrapper = HashableWrapper(locations, [locations])
 
-    return _compute_lu(hashable_mesh), _compute_containing_cells(hashable_mesh, hashable_locations)
+    # Compute the LU decomposition of the mass matrix for orthogonal projection
+    # Find containing cells, skip points outside the mesh
+    mass_lu = _compute_lu(mesh_wrapper)
+    barycentric, cell_indices = _compute_barycentric_coordinates(mesh_wrapper, locations_wrapper)
+
+    is_outside = np.any(np.isnan(barycentric), axis=1)
+    is_nan = np.isnan(values)
+    _logger.debug("Interpolating %d points, skipping %d points outside the mesh and %d NaN values",
+                    len(locations), np.sum(is_outside), np.sum(is_nan))
+
+    skip = is_outside | is_nan
+    values = values[~skip]
+    barycentric = barycentric[~skip]
+    cells = mesh.cell_connectivity.reshape(-1, 4)[cell_indices[~skip]]
+
+    rhs = np.zeros(mesh.n_points)
+    np.add.at(rhs, cells.ravel(), (values[:, None] * barycentric).ravel())
+
+    # Compute L2-orthogonal projection of the pointwise data onto the mesh
+    return mass_lu.solve(rhs)
 
 
 class HashableWrapper:
@@ -326,13 +306,44 @@ def _compute_lu(
 
 
 @functools.lru_cache(maxsize=50)
-def _compute_containing_cells(
+def _compute_barycentric_coordinates(
         mesh_wrapper: HashableWrapper,
         locations_wrapper: HashableWrapper
-) -> np.ndarray:
-    """Compute the cells containing the given locations in the given mesh."""
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute the barycentric coordinates of the given locations with respect
+    to the given mesh and the indices of their containing cells. If the
+    locations are outside the mesh, the barycentric coordinates are set to NaN.
+    """
     mesh = mesh_wrapper.data
     locations = locations_wrapper.data
+    n_locs = locations.shape[0]
+
+    # Find containing cells, skip points outside the mesh
     _logger.debug("Finding containing cells for %d points in mesh with %d points and %d cells",
                     len(locations), mesh.n_points, mesh.n_cells)
-    return mesh.find_containing_cell(locations)
+    containing_cells = mesh.find_containing_cell(locations)
+
+    is_outside: np.ndarray = containing_cells == -1
+    _logger.debug("Interpolating %d points, skipping %d points outside the mesh",
+                    len(locations), np.sum(is_outside))
+
+    locations = locations[~is_outside]
+    cell_indices = containing_cells[~is_outside]
+
+    # Get points of the cells containing the points
+    m = locations.shape[0]
+    cells = mesh.cell_connectivity.reshape(-1, 4)[cell_indices]
+    cell_points = mesh.points[cells.flatten()].reshape(-1, 4, 3)
+
+    # Compute barycentric coordinates of the points in the cells by solving
+    # a linear system of equations for each point
+    element_matrices = np.concatenate((
+        np.transpose(cell_points, (0, 2, 1)),
+        np.ones((m, 1, 4))
+    ), axis=1)
+    b = np.concatenate((locations, np.ones((m, 1))), axis=1)
+    b = b[:, :, None]
+
+    barycentric = np.full((n_locs, 4), np.nan)
+    barycentric[~is_outside] = np.linalg.solve(element_matrices, b).squeeze()
+    return barycentric, containing_cells

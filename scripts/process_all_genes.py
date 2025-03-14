@@ -95,7 +95,8 @@ def write_data(file):
         mesh = io.load_mesh(os.path.join(RESULT_PATH, mesh_files[i]))
         harmonics = io.load_harmonics(os.path.join(RESULT_PATH, harmonic_files[i]), mesh)
 
-        gene_data = [gdl.load(gene, t).interpolate(mesh)
+        # Don't remove nans to optimize internal caching of location lookup
+        gene_data = [gdl.load(gene, t, remove_nans=False).interpolate(mesh)
                      for gene in gdl.gene_names]
         tissue_data = [gdl.load_tissue(tissue, t).interpolate(mesh)
                        for tissue in gdl.tissue_names]
