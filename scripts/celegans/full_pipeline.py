@@ -1,4 +1,5 @@
 # %%
+import os
 import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
@@ -7,8 +8,9 @@ from embryoharmonics import Harmonics, MeshData, HarmonicSmoother, DiffusionSmoo
 from embryoharmonics import celegans
 
 # %%
-MODEL_PATH = "../tests/resources/celegans_models.h5"
-GENE_PATH = "../tests/resources/celegans_genedata.h5"
+ROOT = os.path.join(os.getcwd(), '..', '..', 'tests', 'resources')
+MODEL_PATH = os.path.join(ROOT, 'celegans_models.h5')
+GENE_PATH = os.path.join(ROOT, 'celegans_genedata.h5')
 pv.set_jupyter_backend('client')
 
 # %%
