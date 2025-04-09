@@ -15,7 +15,6 @@ dependencies:
   - trame-vuetify
   - tqdm
   - jupyter
-  - jupytext
   - pip
   - pip:
     - ngsolve==6.2.2406
