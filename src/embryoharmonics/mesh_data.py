@@ -1,48 +1,28 @@
+from dataclasses import dataclass
+
 from numpy.typing import ArrayLike
 import pyvista as pv
 
 
+@dataclass(frozen=True)
 class MeshData:
     """Node-wise data for a triangular/tetrahedral mesh.
+
+    :param mesh: The triangular/tetrahedral mesh this data is associated with.
+    :param name: The name of the data.
+    :param data: The node-wise data.
+    :raise ValueError: If the data length does not match the number of nodes
+        in the mesh.
     """
+    mesh: pv.UnstructuredGrid
+    name: str
+    data: ArrayLike
 
-    def __init__(
-            self,
-            mesh: pv.UnstructuredGrid,
-            name: str,
-            data: ArrayLike
-    ):
-        """
-        Initialize the mesh data.
-
-        :param mesh: The triangular/tetrahedral mesh this data is associated with.
-        :param name: The name of the data.
-        :param data: The node-wise data.
-        :raise ValueError: If the data length does not match the number of nodes
-            in the mesh.
-        """
-        # Check that the data fits the mesh
-        if len(data) != mesh.n_points:
-            raise ValueError(f"Data length {len(data)} does not match mesh size {mesh.n_points}")
-
-        self._mesh = mesh
-        self._name = name
-        self._data = data
-
-
-    @property
-    def name(self) -> str:
-        """The name of the data.
-        """
-        return self._name
-
-
-    @property
-    def data(self) -> ArrayLike:
-        """The node-wise data.
-        """
-        return self._data
-
+    def __post_init__(self):
+        """Check that the data fits the mesh"""
+        if len(self.data) != self.mesh.n_points:
+            raise ValueError(f"Data length {len(self.data)} " \
+                             f"does not match mesh size {self.mesh.n_points}")
 
     def resample(
             self,
@@ -58,8 +38,8 @@ class MeshData:
         :return: A new MeshData object on the target mesh with the resampled data.
         """
         # Use pyvista's sampling to interpolate the data onto the target mesh
-        self._mesh.point_data[self.name] = self.data
-        result = target.sample(self._mesh, snap_to_closest_point=project_outside_data)
+        self.mesh.point_data[self.name] = self.data
+        result = target.sample(self.mesh, snap_to_closest_point=project_outside_data)
         interpolated_data = result.point_data[self.name]
         del result.point_data[self.name]
 
