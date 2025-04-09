@@ -8,7 +8,7 @@ from embryoharmonics import Harmonics, MeshData, HarmonicSmoother, DiffusionSmoo
 from embryoharmonics import celegans
 
 # %%
-ROOT = os.path.join(os.getcwd(), '..', '..', 'tests', 'resources')
+ROOT = os.path.join(os.getcwd(), 'tests', 'resources')
 MODEL_PATH = os.path.join(ROOT, 'celegans_models.h5')
 GENE_PATH = os.path.join(ROOT, 'celegans_genedata.h5')
 pv.set_jupyter_backend('client')

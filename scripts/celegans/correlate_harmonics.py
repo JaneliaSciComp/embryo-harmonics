@@ -54,6 +54,7 @@ for i, hi in enumerate(resampled_earlier):
 plt.imshow(dot_products)
 plt.clim(-1, 1)
 plt.colorbar()
+plt.show()
 
 # %%
 # Find rearrangement of harmonics between time steps, e.g., 13 and 14 are swapped
