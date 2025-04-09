@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import pyvista as pv
 
 from embryoharmonics import celegans
-from embryoharmonics import Harmonics, FemMatrices, correlate
+from embryoharmonics import Harmonics, correlate
 
 # %%
 CWD = os.path.dirname(os.path.abspath(__file__))
@@ -61,23 +61,23 @@ for i, idx in enumerate(earlier_to_later):
 # %%
 # Compare harmonics visually (13 is swapped with 14, but 13->14 has a wrong sign)
 EARLIER_IDX = 13
-later_index = earlier_to_later[EARLIER_IDX]
-later_name = f"harmonic_{later_index:03}"
-earlier_name = f"harmonic_{EARLIER_IDX:03}"
+LATER_IDX = earlier_to_later[EARLIER_IDX]
+LATER_NAME = f"harmonic_{LATER_IDX:03}"
+EARLIER_NAME = f"harmonic_{EARLIER_IDX:03}"
 
 p = pv.Plotter(shape=(1, 3))
 # Later timestep
-sign = -1 if corr[EARLIER_IDX, later_index] < 0 else 1
-p.add_mesh(mesh_later, scalars=sign * harmonics_later[later_index].data)
-p.add_text(f"{later_name} (later)")
+sign = -1 if corr[EARLIER_IDX, LATER_IDX] < 0 else 1
+p.add_mesh(mesh_later, scalars=sign * harmonics_later[LATER_IDX].data)
+p.add_text(f"{LATER_NAME} (later)")
 p.subplot(0, 1)
 # Earlier timestep resampled to later
 p.add_mesh(mesh_transformed, scalars=harmonics_earlier[EARLIER_IDX].data)
-p.add_text(f"{earlier_name} (resampled)")
+p.add_text(f"{EARLIER_NAME} (resampled)")
 p.subplot(0, 2)
 # Earlier timestep
 p.add_mesh(mesh_earlier, scalars=harmonics_earlier[EARLIER_IDX].data)
-p.add_text(f"{earlier_name} (earlier)")
+p.add_text(f"{EARLIER_NAME} (earlier)")
 p.link_views()
 p.show()
 
