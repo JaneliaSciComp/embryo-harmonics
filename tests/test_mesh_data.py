@@ -2,8 +2,9 @@ import numpy as np
 import pytest
 
 import pyvista as pv
+import numpy as np
 
-from embryoharmonics import MeshData
+from embryoharmonics import MeshData, correlate
 
 
 def create_box_mesh(level: int):
@@ -41,3 +42,16 @@ def test_resample_data(level):
     finer_data = data.resample(finer_mesh)
 
     assert np.all(finer_data.data == 1.23)
+
+@pytest.mark.parametrize("level", [0, 1])
+def test_correlation_works(level: int):
+    """Test that correlation function yields a correlation matrix."""
+    mesh = create_box_mesh(level)
+    data = [MeshData(mesh, f"test{i}", np.random.randn(mesh.n_points)) for i in range(3)]
+
+    corr = correlate(data)
+
+    assert corr.shape == (3, 3)
+    assert np.all(np.logical_and(corr >= -1 - 1e-6, corr <= 1 + 1e-6))
+    assert np.all(np.isclose(corr, corr.T))
+    assert np.all(np.isclose(np.diag(corr), 1))
