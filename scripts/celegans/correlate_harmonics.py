@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import pyvista as pv
 
 from embryoharmonics import celegans
-from embryoharmonics import Harmonics, FemMatrices
+from embryoharmonics import Harmonics, FemMatrices, correlate
 
 # %%
 CWD = os.path.dirname(os.path.abspath(__file__))
@@ -36,32 +36,26 @@ print(f"Earlier timestep bounds after transformation: {mesh_earlier.bounds}")
 
 # %%
 # Resample harmonics from earlier timestep to later timestep
-harmonics_earlier = list(harmonics_earlier)
 resampled_earlier = [
     h.resample(mesh_later, project_outside_data=True) for h in harmonics_earlier
 ]
-harmonics_later = list(harmonics_later)
 
 # %%
-# Compare harmonics numerically by computing the dot product between the two
-# sets on the same mesh. The dot product is done using the mass matrix of the
-# mesh, so that the dot product is invariant to the local mesh size.
-dot_products = np.zeros((len(harmonics_earlier), len(harmonics_later)))
-fem = FemMatrices.compute_for(mesh_later, stiffness=False)
-for i, hi in enumerate(resampled_earlier):
-    for j, hj in enumerate(harmonics_later):
-        dot_products[i, j] = hj.data.dot(fem.mass @ hi.data)
-plt.imshow(dot_products)
+# Compare harmonics numerically by computing pairwise correlations. This is done
+# using the mass matrix of the mesh, so that the result is invariant to the
+# local mesh size.
+corr = correlate(resampled_earlier, harmonics_later, normalize=False)
+plt.imshow(corr)
 plt.clim(-1, 1)
 plt.colorbar()
 plt.show()
 
 # %%
 # Find rearrangement of harmonics between time steps, e.g., 13 and 14 are swapped
-earlier_to_later = np.argmax(np.abs(dot_products), axis=1)
+earlier_to_later = [int(v) for v in np.argmax(np.abs(corr), axis=1)]
 for i, idx in enumerate(earlier_to_later):
     if i != idx:
-        sign_str = " (sign flip)" if dot_products[i, idx] < 0 else ""
+        sign_str = " (sign flip)" if corr[i, idx] < 0 else ""
         print(f"{i:03} -> {idx:03}" + sign_str)
 
 # %%
@@ -73,7 +67,7 @@ earlier_name = f"harmonic_{EARLIER_IDX:03}"
 
 p = pv.Plotter(shape=(1, 3))
 # Later timestep
-sign = -1 if dot_products[EARLIER_IDX, later_index] < 0 else 1
+sign = -1 if corr[EARLIER_IDX, later_index] < 0 else 1
 p.add_mesh(mesh_later, scalars=sign * harmonics_later[later_index].data)
 p.add_text(f"{later_name} (later)")
 p.subplot(0, 1)

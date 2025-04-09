@@ -1,4 +1,5 @@
 from typing import Iterable
+from itertools import chain
 
 import numpy as np
 
@@ -34,7 +35,7 @@ def correlate(
     data2 = [data2] if isinstance(data2, MeshData) else data2
 
     mesh = data1[0].mesh
-    for data in data1 + data2:
+    for data in chain(data1, data2):
         if data.mesh != mesh:
             raise ValueError("All mesh data must be on the same mesh.")
 
