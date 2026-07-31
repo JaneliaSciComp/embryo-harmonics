@@ -4,11 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from embryoharmonics import Harmonics, MeshData, celegans
-from embryoharmonics.celegans.webster_horn_harmonics import compute_webster_horn_harmonics
+from embryoharmonics.celegans.webster_horn_harmonics import (
+    compute_webster_horn_harmonics,
+)
 
 CWD = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(CWD, '..', '..', 'data', 'avg_models_n371.h5')
-RESULTS_DIR = os.path.join(CWD, '..', '..', 'results')
+MODEL_PATH = os.path.join(CWD, "..", "..", "data", "avg_models_n371.h5")
+RESULTS_DIR = os.path.join(CWD, "..", "..", "results")
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 TIME_STEP = 186  # middle of the 371 averaged models
@@ -31,16 +33,15 @@ print(f"mesh_ii (symmetric): {mesh_ii.n_cells} cells")
 
 # iii. Webster-Horn approximation on the symmetric geometry
 webster_harmonics = compute_webster_horn_harmonics(mesh_ii, embryo_model_ii, n=N)
-print(f"Webster-Horn eigenvalues:   {webster_harmonics.eigenvalues}")
-print(f"FEM (symmetric) eigenvalues: {harmonics_ii.eigenvalues}")
 
 # Transform the non-symmetric mesh onto the symmetric one (same pattern as
 # scripts/celegans/correlate_harmonics.py), so harmonics_i can be resampled
 # onto a common mesh with harmonics_ii and the Webster-Horn basis.
 mesh_i_transformed = celegans.transform_mesh(mesh_i, mesh_ii)
 resampled_harmonics_i = [
-    MeshData(mesh_i_transformed, harmonics_i[k].name, harmonics_i[k].data)
-    .resample(mesh_ii, project_outside_data=True)
+    MeshData(mesh_i_transformed, harmonics_i[k].name, harmonics_i[k].data).resample(
+        mesh_ii, project_outside_data=True
+    )
     for k in range(N)
 ]
 
@@ -48,13 +49,17 @@ resampled_harmonics_i = [
 coefficients_i = webster_harmonics.decompose(resampled_harmonics_i)
 coefficients_ii = webster_harmonics.decompose([harmonics_ii[k] for k in range(N)])
 
-matrix_i = np.column_stack([coefficients_i[data.name] for data in resampled_harmonics_i])
+matrix_i = np.column_stack(
+    [coefficients_i[data.name] for data in resampled_harmonics_i]
+)
 matrix_ii = np.column_stack([coefficients_ii[harmonics_ii[k].name] for k in range(N)])
 
 # Save a single comparison plot (not shown interactively)
 fig, axes = plt.subplots(1, 2, figsize=(10, 4.5), sharey=True)
 for ax, matrix, title in zip(
-        axes, [matrix_i, matrix_ii], ["(i) non-symmetric geometry", "(ii) symmetric geometry"]
+    axes,
+    [matrix_i, matrix_ii],
+    ["(i) non-symmetric geometry", "(ii) symmetric geometry"],
 ):
     im = ax.imshow(np.abs(matrix), vmin=0, vmax=1, cmap="viridis")
     ax.set_title(title)
