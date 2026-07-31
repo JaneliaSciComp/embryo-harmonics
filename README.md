@@ -2,20 +2,15 @@
 A collection of scripts for computing eigenfunctions on geometrical models of C elegans embryos using [NGSolve](https://ngsolve.org/).
 
 ### Setup
-Run the following line from the terminal to create a new environment called `embryo-harmonics`:
+Install [uv](https://docs.astral.sh/uv/), then create the environment:
 ```bash
-conda env create -f environment.yaml
-```
-
-Activate the environment:
-```bash
-conda activate embryo-harmonics
+uv sync
 ```
 
 Then, you should be able to run the examples using:
 ```bash
-python <filename>  # just console output, no GUI
-netgen <filename>  # console output and GUI
+uv run python <filename>  # just console output, no GUI
+uv run netgen <filename>  # console output and GUI
 ```
 
 The `.py` scripts in the `scripts/` directory are text representations of notebook files courtesy of jupytext.
