@@ -43,11 +43,16 @@ class EmbryoModelLoader:
 
     def load(
             self,
-            time_step: int
+            time_step: int,
+            *,
+            symmetric: bool = False
     ) -> EmbryoModel:
         """Load an averaged model for the given time step.
 
         :param time_step: Which time step to load
+        :param symmetric: If True, make the geometry rotationally symmetric by
+            replicating and rotating the 0-th transverse spline instead of
+            using all the transverse splines in the data
         :return: An :class:`EmbryoModel` object containing the geometry data
         """
         _logger.info("Loading averaged model for time step %d from '%s'",
@@ -78,7 +83,8 @@ class EmbryoModelLoader:
             seam_cell_names,
             spline_domain,
             central_coordinates,
-            transverse_coordinates
+            transverse_coordinates,
+            symmetric=symmetric
         )
 
 

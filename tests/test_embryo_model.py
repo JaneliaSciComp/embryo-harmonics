@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from embryoharmonics.celegans import EmbryoModelLoader
@@ -39,3 +40,20 @@ def test_model_can_generate_mesh(embryo_mesh):
     """
     assert embryo_mesh.n_points > 0
     assert embryo_mesh.n_cells > 0
+
+
+def test_symmetric_model_has_identical_radius_for_all_splines(embryo_model_loader):
+    """Load a rotationally symmetric embryo model and check that all
+    transverse splines have the same radius profile (i.e. they are just
+    rotated copies of the 0-th spline).
+    """
+    embryo_model = embryo_model_loader.load(420, symmetric=True)
+    t = embryo_model.spline_domain
+    central = embryo_model.central_spline(t)
+
+    radii = [
+        np.linalg.norm(spline(t) - central, axis=1)
+        for spline in embryo_model.transverse_splines
+    ]
+    for radius in radii[1:]:
+        assert np.allclose(radius, radii[0])

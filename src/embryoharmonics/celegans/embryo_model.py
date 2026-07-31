@@ -21,10 +21,24 @@ class EmbryoModel:
     was collected at certain points (called seam cells) on the lateral sides of
     the embryo.
     """
-    def __init__(self, seam_cells, spline_domain, central_coordinates, transverse_coordinates):
+    def __init__(
+            self,
+            seam_cells,
+            spline_domain,
+            central_coordinates,
+            transverse_coordinates,
+            *,
+            symmetric: bool = False
+    ):
         self.seam_cells = {name: index for index, name in enumerate(seam_cells)}
         self.spline_domain = spline_domain
         self.central_spline = CubicSpline(spline_domain, central_coordinates)
+
+        if symmetric:
+            transverse_coordinates = _replicate_and_rotate(
+                transverse_coordinates[0], central_coordinates, len(transverse_coordinates)
+            )
+
         self.transverse_splines = [
             CubicSpline(spline_domain, coordinates)
             for coordinates in transverse_coordinates
@@ -197,6 +211,33 @@ def _rotate_around_z_and_x(
     points = np.dot(points, rotation_matrix.T)
     # manually apply rotation matrix around x-axis
     return np.column_stack((points[:, 0], points[:, 2], -points[:, 1]))
+
+
+def _replicate_and_rotate(
+        reference_coordinates: np.ndarray,
+        central_coordinates: np.ndarray,
+        n_splines: int
+) -> list[np.ndarray]:
+    """Replicate a single transverse spline's coordinates into ``n_splines``
+    copies, evenly rotated about the central axis, to make a rotationally
+    symmetric embryo geometry.
+
+    :param reference_coordinates: Coordinates of the spline to replicate
+        (e.g. the 0-th transverse spline)
+    :param central_coordinates: Coordinates of the central spline, defined on
+        the same domain as ``reference_coordinates``
+    :param n_splines: The number of rotated copies to generate
+    :return: A list of ``n_splines`` coordinate arrays, evenly spaced around
+        the central axis (the first entry equals ``reference_coordinates``)
+    """
+    radial = reference_coordinates - central_coordinates
+    angles = np.arange(n_splines) / n_splines * 2 * math.pi
+    copies = []
+    for angle in angles:
+        c, s = np.cos(angle), np.sin(angle)
+        rotation_matrix = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+        copies.append(radial @ rotation_matrix.T + central_coordinates)
+    return copies
 
 
 def _get_spline_surface(
