@@ -22,6 +22,7 @@ dependencies = [
   "jupyter",
   "ngsolve==6.2.2406",
   "webgui_jupyter_widgets",
+  "mkl<2026 ; sys_platform == 'linux'",
 ]
 
 [dependency-groups]
