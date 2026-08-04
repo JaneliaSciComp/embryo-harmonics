@@ -6,6 +6,7 @@ import logging
 
 import numpy as np
 import pyvista as pv
+import scipy.sparse as scs
 from scipy.integrate import cumulative_trapezoid
 from scipy.special import jv
 
@@ -69,20 +70,42 @@ def compute_webster_horn_harmonics(
         eigenvalues[i] = candidate["eigenvalue"]
 
     labels = [(c["m"], c["l"], c["n"]) for c in candidates]
+    orthonormalize_clusters(fields, degenerate_clusters(labels), mass)
 
-    # The cos/sin pair of a degenerate cluster is mass-orthogonal on an exactly
-    # rotationally symmetric domain, but a tetrahedral mesh never is, so
-    # orthonormalize explicitly. Any rotation within a degenerate eigenspace is
-    # still an eigenbasis, so this costs nothing and lets projections onto a
-    # cluster be computed as a plain sum of squared coefficients.
+    return Harmonics(mesh, fields, eigenvalues), labels
+
+
+def orthonormalize_clusters(
+        fields: np.ndarray,
+        clusters: list[list[int]],
+        mass: scs.csr_matrix
+) -> np.ndarray:
+    """Mass-orthonormalize the modes within each degenerate cluster, in place.
+
+    The cos/sin pair of a degenerate cluster is mass-orthogonal on an exactly
+    rotationally symmetric domain, but a tetrahedral mesh never is -- and
+    resampling a basis onto another mesh destroys orthonormality outright. Any
+    rotation within a degenerate eigenspace is still an eigenbasis, so this costs
+    nothing, and it is what lets :func:`match_modes` compute the projection onto
+    a cluster as a plain sum of squared coefficients.
+
+    Modes in different clusters are left alone; only orthonormality *within* each
+    cluster is required.
+
+    :param fields: The modes, one per row
+    :param clusters: The degenerate clusters, from :func:`degenerate_clusters`
+    :param mass: The mass matrix of the mesh the modes are defined on
+    :return: ``fields``, modified in place
+    """
+    # The sparse-dense matmuls raise spurious FP warnings on some BLAS backends
+    # even though the (verified finite) result is unaffected.
     with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-        for indices in degenerate_clusters(labels):
+        for indices in clusters:
             for position, i in enumerate(indices):
                 for j in indices[:position]:
                     fields[i] -= (fields[i] @ (mass @ fields[j])) * fields[j]
                 fields[i] /= np.sqrt(fields[i] @ (mass @ fields[i]))
-
-    return Harmonics(mesh, fields, eigenvalues), labels
+    return fields
 
 
 def degenerate_clusters(
