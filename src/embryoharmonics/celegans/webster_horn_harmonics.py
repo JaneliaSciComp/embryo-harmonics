@@ -26,7 +26,7 @@ def compute_webster_horn_harmonics(
         m_max: int = 4,
         l_max: int = 6,
         n_samples: int = 200,
-) -> Harmonics:
+) -> tuple[Harmonics, list[tuple[int, int, int]]]:
     """Approximate the first ``n`` harmonics of a (rotationally symmetric)
     embryo mesh using the Webster-Horn approximation, reconstructed as fields
     on the given mesh.
@@ -35,15 +35,18 @@ def compute_webster_horn_harmonics(
     the assumption of an exact body of revolution, so ``embryo_model`` should
     be one loaded with ``symmetric=True``.
 
-    :param mesh: The embryo mesh to reconstruct the fields on (should be the
-        mesh generated from ``embryo_model``)
+    :param mesh: The embryo mesh to reconstruct the fields on (usually the
+        mesh generated from ``embryo_model``, but any mesh occupying roughly
+        the same region works, since the modes are evaluated analytically)
     :param embryo_model: The (rotationally symmetric) embryo model providing
         the central axis and radius profile
     :param n: The number of harmonics to approximate
     :param m_max: The largest azimuthal (Bessel) order branch to consider
     :param l_max: The largest 1-indexed radial branch to consider, per order
     :param n_samples: The number of points to sample the axial profile at
-    :return: The approximated harmonics, defined on ``mesh``
+    :return: The approximated harmonics defined on ``mesh``, and their
+        ``(m, l, n)`` mode labels (azimuthal order, radial branch, axial
+        index). Modes sharing a label form a degenerate cluster.
     """
     s_samples, R_samples, t_samples, z_samples = _axial_profile(embryo_model, n_samples)
     candidates = _select_modes(s_samples, R_samples, n, m_max, l_max)
@@ -65,7 +68,80 @@ def compute_webster_horn_harmonics(
         fields[i] = field
         eigenvalues[i] = candidate["eigenvalue"]
 
-    return Harmonics(mesh, fields, eigenvalues)
+    labels = [(c["m"], c["l"], c["n"]) for c in candidates]
+
+    # The cos/sin pair of a degenerate cluster is mass-orthogonal on an exactly
+    # rotationally symmetric domain, but a tetrahedral mesh never is, so
+    # orthonormalize explicitly. Any rotation within a degenerate eigenspace is
+    # still an eigenbasis, so this costs nothing and lets projections onto a
+    # cluster be computed as a plain sum of squared coefficients.
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        for indices in degenerate_clusters(labels):
+            for position, i in enumerate(indices):
+                for j in indices[:position]:
+                    fields[i] -= (fields[i] @ (mass @ fields[j])) * fields[j]
+                fields[i] /= np.sqrt(fields[i] @ (mass @ fields[i]))
+
+    return Harmonics(mesh, fields, eigenvalues), labels
+
+
+def degenerate_clusters(
+        labels: list[tuple[int, int, int]]
+) -> list[list[int]]:
+    """Group mode indices by their ``(m, l, n)`` label.
+
+    Modes with the same label are degenerate: for ``m > 0`` the ``cos(m*theta)``
+    and ``sin(m*theta)`` modes share an eigenvalue, so any rotation of the pair
+    is an equally valid eigenbasis. Only quantities computed per cluster are
+    well defined; individual modes within a cluster are not.
+
+    :param labels: The mode labels, as returned by
+        :func:`compute_webster_horn_harmonics`
+    :return: One list of mode indices per cluster, in ascending eigenvalue order
+    """
+    clusters = {}
+    for index, label in enumerate(labels):
+        clusters.setdefault(label, []).append(index)
+    return sorted(clusters.values(), key=lambda indices: indices[0])
+
+
+def match_modes(
+        coefficients: np.ndarray,
+        clusters: list[list[int]]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Pair every target mode one-to-one with the approximate eigenfunction it
+    matches best, and return that scalar product.
+
+    ``coefficients[i, j]`` is the mass-weighted scalar product of approximate
+    mode ``i`` with target mode ``j``, i.e. the output of
+    :meth:`Harmonics.decompose` stacked column-wise, with both bases
+    mass-normalized.
+
+    For a degenerate cluster ``C`` there is no single approximate mode to pair
+    with: for m > 0 the pair ``cos(m*theta)``, ``sin(m*theta)`` spans a 2D
+    eigenspace, and every rotation ``cos(m*(theta - phi))`` in it is equally an
+    eigenfunction -- the phase is gauge, not part of the approximation. The
+    best-matching eigenfunction of that cluster is therefore the normalized
+    projection ``P_C u / ||P_C u||``, whose scalar product with ``u`` is
+    ``||P_C u|| = sqrt(sum_i in C  coefficients[i, j]^2)``. For a
+    non-degenerate cluster this reduces to the plain scalar product
+    ``|coefficients[i, j]|``.
+
+    :param coefficients: The scalar products of the target basis with respect to
+        the approximate basis
+    :param clusters: The degenerate clusters of the approximate basis, from
+        :func:`degenerate_clusters`
+    :return: For each target mode, the index of the matched cluster and the
+        scalar product with the best eigenfunction in it (1 means the target
+        mode is reproduced exactly)
+    """
+    # Scalar product of every target mode with the best eigenfunction of every
+    # cluster, i.e. the norm of its projection onto that cluster's eigenspace.
+    scores = np.array([
+        np.linalg.norm(coefficients[indices, :], axis=0) for indices in clusters
+    ])
+    matched = scores.argmax(axis=0)
+    return matched, scores[matched, np.arange(coefficients.shape[1])]
 
 
 def _axial_profile(
@@ -118,6 +194,8 @@ def _select_modes(
                     candidates.append({
                         "eigenvalue": eigenvalues[idx],
                         "m": m,
+                        "l": l,
+                        "n": idx,
                         "jp": jp,
                         "envelope": envelopes[:, idx],
                         "trig": trig,
@@ -130,7 +208,19 @@ def _select_modes(
             "Only found %d Webster-Horn candidate modes (requested %d); "
             "consider increasing m_max/l_max", n_available, n
         )
-    return candidates[:n]
+
+    # Never split a degenerate cos/sin pair across the truncation boundary:
+    # a half-cluster would make cluster-wise comparisons meaningless.
+    selected = candidates[:n]
+    label = lambda c: (c["m"], c["l"], c["n"])
+    while len(selected) < n_available and label(candidates[len(selected)]) == label(selected[-1]):
+        selected.append(candidates[len(selected)])
+    if len(selected) > n:
+        _logger.info(
+            "Extended to %d modes to keep the degenerate cluster %s intact",
+            len(selected), label(selected[-1])
+        )
+    return selected
 
 
 def _node_axial_coordinates(
