@@ -25,10 +25,12 @@ read as a lower bound on agreement -- see
 scripts/celegans/compare_webster_horn_timeline.py for the same comparison
 across the whole time course.
 """
+import argparse
 import os
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pyvista as pv
 
 from embryoharmonics import Harmonics, celegans
 from embryoharmonics.celegans.webster_horn_harmonics import (
@@ -38,6 +40,15 @@ from embryoharmonics.celegans.webster_horn_harmonics import (
     orthonormalize_clusters,
 )
 from embryoharmonics.fem import FemMatrices
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument(
+    "--plot-harmonics", action="store_true",
+    help="for each mode, render the raw/symmetric/Webster-Horn triplet from three "
+         "orthogonal views into results/harmonic_plots_<time step>/harmonic_<k>.png "
+         "(slow: one render per mode)"
+)
+args = parser.parse_args()
 
 CWD = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(CWD, "..", "..", "data", "avg_models_n371.h5")
@@ -235,3 +246,45 @@ budget_path = os.path.join(RESULTS_DIR, "webster_horn_error_budget.png")
 fig.savefig(budget_path, dpi=150)
 
 print(f"\nSaved {budget_path}")
+
+if args.plot_harmonics:
+    # One figure per mode: raw / symmetric / Webster-Horn side by side (columns),
+    # each from three axis-aligned views stacked top to bottom (rows). Webster-Horn
+    # is a member of the cluster matched to the symmetric FEM mode at this index
+    # (see the adiabatic matching above) -- for a degenerate (m > 0) cluster, which
+    # member is not the phase-fitted rotation match_modes scores against, but a
+    # cluster has as many members as there are FEM modes matched to it, so cycling
+    # through them by occurrence at least shows two distinct cos/sin-like shapes
+    # instead of plotting the same array twice.
+    plot_dir = os.path.join(RESULTS_DIR, f"harmonic_plots_{TIME_STEP}")
+    os.makedirs(plot_dir, exist_ok=True)
+    views = ("view_yz", "view_xz", "view_xy")
+    cluster_occurrence = {}
+
+    for k in modes:
+        k = int(k)
+        cluster = matched_adiabatic[k]
+        occurrence = cluster_occurrence.get(cluster, 0)
+        cluster_occurrence[cluster] = occurrence + 1
+        webster_index = int(clusters[cluster][occurrence % len(clusters[cluster])])
+        columns = (
+            ("raw", harmonics_raw_on_stretched[k]),
+            ("symmetric", harmonics_sym[k]),
+            ("Webster-Horn", webster[webster_index]),
+        )
+        clim = max(np.abs(data.data).max() for _, data in columns)
+
+        plotter = pv.Plotter(shape=(3, 3), off_screen=True)
+        for col, (title, data) in enumerate(columns):
+            for row, view in enumerate(views):
+                plotter.subplot(row, col)
+                plotter.add_mesh(data.mesh, scalars=data.data, cmap="RdBu",
+                                  clim=(-clim, clim), show_scalar_bar=False)
+                if row == 0:
+                    plotter.add_text(title, font_size=10)
+                getattr(plotter, view)()
+        plot_path = os.path.join(plot_dir, f"harmonic_{k:02d}.png")
+        plotter.screenshot(plot_path)
+        plotter.close()
+
+    print(f"Saved {len(modes)} harmonic triplet plots to {plot_dir}")
