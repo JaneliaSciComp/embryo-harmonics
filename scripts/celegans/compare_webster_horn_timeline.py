@@ -44,7 +44,12 @@ RESULTS_DIR = os.path.join(CWD, "..", "..", "results")
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 N = 100
-N_POOL = N + 20  # oversized pool, so even the last FEM mode still has a partner
+# Every basis used for one-to-one matching (Webster-Horn and, for the
+# symmetrization comparison, the symmetric geometry's own FEM basis) is
+# computed with this many modes -- deliberately more than N -- so even the
+# last of the N target modes still has its correct partner available, instead
+# of being forced onto the wrong one because its partner was cut off by N.
+N_POOL = N + 20
 MESH_SIZE = 5
 V_MIN = 0.995  # scalar products below this are clipped in the plot
 # One process per time step: a bad geometry can segfault/double-free inside
@@ -88,8 +93,9 @@ def scalar_products(time_step):
     mesh_sym = model_sym.generate_mesh(mesh_size=MESH_SIZE)
     webster, labels = compute_webster_horn_harmonics(mesh_sym, model_sym, n=N_POOL)
     clusters = degenerate_clusters(labels)
-    harmonics_sym = Harmonics.compute(mesh_sym, n=N)
-    targets_sym = [harmonics_sym[k] for k in range(N)]
+    harmonics_sym = Harmonics.compute(mesh_sym, n=N_POOL)
+    targets_sym_pool = [harmonics_sym[k] for k in range(N_POOL)]
+    targets_sym = targets_sym_pool[:N]
 
     # The raw mesh is stretched onto the symmetric one; the Webster-Horn modes
     # are analytic, so they are evaluated directly on the stretched mesh rather
@@ -102,21 +108,29 @@ def scalar_products(time_step):
     harmonics_raw = Harmonics.compute(mesh_raw_stretched, n=N)
     targets_raw = [harmonics_raw[k] for k in range(N)]
 
-    matched_sym, product_sym = match(webster, targets_sym, clusters)
+    # match_modes scores each target column independently, so matching the
+    # full N_POOL pool instead of just the first N doesn't change the matches
+    # for those first N -- it only extends fem_clusters below with the pairing
+    # for the rest of the pool, which is what gives that comparison the same
+    # headroom the Webster-Horn ones have.
+    matched_sym_pool, product_sym_pool = match(webster, targets_sym_pool, clusters)
+    matched_sym, product_sym = matched_sym_pool[:N], product_sym_pool[:N]
     _, product_raw = match(webster_raw, targets_raw, clusters)
 
     # Symmetrization alone: the symmetric geometry's own FEM basis against the
     # raw one's. The degenerate structure of a FEM basis is not known from mode
     # labels, so it is taken from how the Webster-Horn clusters matched the
     # symmetric basis -- the pairing that compare_webster_horn.py checks is
-    # one-to-one.
+    # one-to-one. Grouping the full pool (not just the first N) gives a raw FEM
+    # mode near the N cutoff a chance to land on its correct, possibly
+    # beyond-N, symmetric partner instead of the wrong in-range cluster.
     fem_clusters = [
-        list(np.flatnonzero(matched_sym == cluster))
-        for cluster in np.unique(matched_sym)
+        list(np.flatnonzero(matched_sym_pool == cluster))
+        for cluster in np.unique(matched_sym_pool)
     ]
     resampled = np.array([
         data.resample(mesh_raw_stretched, project_outside_data=True).data
-        for data in targets_sym
+        for data in targets_sym_pool
     ])
     # Resampling destroys mass-normalization and within-cluster orthogonality,
     # both of which match_modes relies on.
