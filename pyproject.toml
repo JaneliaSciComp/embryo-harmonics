@@ -9,6 +9,26 @@ authors = [
   {name = "Michael Innerberger", email = "innerbergerm@hhmi.org"},
 ]
 
+dependencies = [
+  "h5py",
+  "numpy==2.2.0",
+  "scipy",
+  "matplotlib",
+  "pyvista==0.44.2",
+  "trame",
+  "trame-vtk",
+  "trame-vuetify",
+  "tqdm",
+  "jupyter",
+  "ngsolve==6.2.2406",
+  "webgui_jupyter_widgets",
+  "mkl<2026 ; sys_platform == 'linux'",
+  "threadpoolctl",
+]
+
+[dependency-groups]
+dev = ["pytest", "pytest-cov"]
+
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
