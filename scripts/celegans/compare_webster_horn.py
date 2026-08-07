@@ -48,6 +48,12 @@ parser.add_argument(
          "orthogonal views into results/harmonic_plots_<time step>/harmonic_<k>.png "
          "(slow: one render per mode)"
 )
+parser.add_argument(
+    "--plot-matrix", action="store_true",
+    help="plot the full scalar-product matrix (every basis mode against every "
+         "target mode, not just the matched diagonal) for all three comparisons, "
+         "saved to results/webster_horn_matrix.png"
+)
 args = parser.parse_args()
 
 CWD = os.path.dirname(os.path.abspath(__file__))
@@ -55,7 +61,7 @@ MODEL_PATH = os.path.join(CWD, "..", "..", "data", "avg_models_n371.h5")
 RESULTS_DIR = os.path.join(CWD, "..", "..", "results")
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-TIME_STEP = 370  # middle of the 371 averaged models
+TIME_STEP = 185  # middle of the 371 averaged models
 N = 100  # below ~15 modes the spectrum is purely axial (m = 0) and degeneracy-free
 # Every basis used for one-to-one matching (Webster-Horn and, for the
 # symmetrization comparison, the symmetric geometry's own FEM basis) is
@@ -157,9 +163,8 @@ orthonormalize_clusters(resampled, fem_clusters, mass_raw)
 harmonics_sym_on_raw = Harmonics(
     mesh_raw_stretched, resampled, harmonics_sym.eigenvalues
 )
-_, product_sym_raw = match_modes(
-    coefficient_matrix(harmonics_sym_on_raw, targets_raw), fem_clusters
-)
+matrix_sym_raw = coefficient_matrix(harmonics_sym_on_raw, targets_raw)
+_, product_sym_raw = match_modes(matrix_sym_raw, fem_clusters)
 
 # Eigenvalue errors, relative to the spectral range so the zero (constant) mode
 # does not blow up. Mode 0 is exactly zero for both bases by construction.
@@ -246,6 +251,39 @@ budget_path = os.path.join(RESULTS_DIR, "webster_horn_error_budget.png")
 fig.savefig(budget_path, dpi=150)
 
 print(f"\nSaved {budget_path}")
+
+if args.plot_matrix:
+    # Full scalar-product matrix, not just the matched diagonal: off-diagonal mass
+    # shows a target mode splitting its weight across several basis modes, i.e.
+    # where the one-to-one pairing above is a poor summary of the true overlap.
+    #
+    # The colour scale saturates at NOISE_THRESHOLD (well below the matched
+    # diagonal's ~1) so that scale shows the noise floor, not the signal; anything
+    # at or above it -- diagonal included -- is flagged in the "over" colour so
+    # off-diagonal leakage past the threshold is as visible as the diagonal itself.
+    NOISE_THRESHOLD = 0.05
+    cmap = plt.get_cmap("viridis").copy()
+    cmap.set_over("red")
+
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    matrices = (
+        ("adiabatic (WH vs FEM sym)", matrix_adiabatic_pool),
+        ("total (WH vs FEM raw)", matrix_total),
+        ("symmetrization (FEM sym vs FEM raw)", matrix_sym_raw),
+    )
+    for ax, (title, matrix) in zip(axes, matrices):
+        im = ax.imshow(np.abs(matrix), vmin=0, vmax=NOISE_THRESHOLD, cmap=cmap,
+                        origin="lower", aspect="auto", interpolation="nearest")
+        ax.set_xlabel("target mode")
+        ax.set_ylabel("basis mode")
+        ax.set_title(title)
+        fig.colorbar(im, ax=ax, shrink=0.8, extend="max",
+                     label=f"|scalar product| (red: ≥ {NOISE_THRESHOLD:.0%})")
+    fig.suptitle(f"Scalar product matrix, all mode pairs (time step {TIME_STEP})")
+    fig.tight_layout()
+    matrix_path = os.path.join(RESULTS_DIR, "webster_horn_matrix.png")
+    fig.savefig(matrix_path, dpi=150)
+    print(f"\nSaved {matrix_path}")
 
 if args.plot_harmonics:
     # One figure per mode: raw / symmetric / Webster-Horn side by side (columns),
