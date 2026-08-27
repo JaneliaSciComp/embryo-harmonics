@@ -61,7 +61,8 @@ for i in range(min(N, 5)):
 # sibling XDMF file that can be opened in ParaView:
 # from embryoharmonics import io
 # io.save_time_point("embryo.h5", TIME_STEP, mesh, harmonics)
-# same_mesh, same_harmonics = io.load_time_point("embryo.h5", TIME_STEP)
+# same_harmonics = io.load_harmonics("embryo.h5", TIME_STEP)
+# same_mesh = same_harmonics.mesh  # or io.load_mesh("embryo.h5", TIME_STEP)
 
 # %%
 # Gene data can be loaded and smoothly interpolated

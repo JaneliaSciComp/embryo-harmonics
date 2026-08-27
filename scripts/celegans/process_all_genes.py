@@ -69,7 +69,8 @@ def write_data(
     for i, t in enumerate(tqdm(time_steps)):
         # Load the current time step and compute coefficients for all genes and tissues
         logger.info("Processing time step %d", t)
-        mesh, harmonics = io.load_time_point(result_path, t)
+        harmonics = io.load_harmonics(result_path, t)
+        mesh = harmonics.mesh
 
         # Don't remove nans to optimize internal caching of location lookup
         gene_data = [
@@ -123,7 +124,7 @@ def main():
             "No matching time steps found between result file and gene data!"
         )
 
-    _, first_harmonics = io.load_time_point(args.result_path, time_steps[0])
+    first_harmonics = io.load_harmonics(args.result_path, time_steps[0])
     n_harmonics = len(first_harmonics)
     logger.info(
         "Compute coefficients for %d times steps and  %d harmonics",

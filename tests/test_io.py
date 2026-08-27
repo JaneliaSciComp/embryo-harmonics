@@ -36,10 +36,13 @@ def test_storing_time_points_works(dim):
         assert io.time_points(file_name) == times
 
         for t, mesh, h in zip(times, meshes, harmonics):
-            loaded_mesh, loaded_harmonics = io.load_time_point(file_name, t)
+            loaded_mesh = io.load_mesh(file_name, t)
             assert loaded_mesh.n_points == mesh.n_points
             assert loaded_mesh.n_cells == mesh.n_cells
             assert np.allclose(loaded_mesh.points, mesh.points)
+
+            loaded_harmonics = io.load_harmonics(file_name, t)
+            assert loaded_harmonics.mesh.n_points == mesh.n_points
             assert len(loaded_harmonics) == len(h)
             assert np.allclose(loaded_harmonics.eigenvalues, h.eigenvalues)
             assert np.allclose(loaded_harmonics[0].data, h[0].data)

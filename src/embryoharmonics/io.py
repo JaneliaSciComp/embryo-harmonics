@@ -64,30 +64,49 @@ def save_time_point(
     _write_xdmf(file_name)
 
 
-def load_time_point(
+def load_mesh(
         file_name: str,
         time: int
-) -> tuple[pv.UnstructuredGrid, Harmonics]:
-    """Load mesh and harmonics for one time point from an HDF5 file.
+) -> pv.UnstructuredGrid:
+    """Load only the mesh for one time point from an HDF5 file.
 
     :param file_name: The name of the HDF5 file written by :func:`save_time_point`.
     :param time: The time point to load.
-    :return: The mesh and the harmonics on it.
+    :return: The mesh at the given time point.
     """
     key = _time_key(time)
     with h5py.File(file_name, 'r') as h5file:
         points = h5file[f'/meshes/{key}/points'][:]
         cells = h5file[f'/meshes/{key}/cells'][:]
 
+    cell_type, _ = _CELL_TYPES[cells.shape[1]]
+    return pv.UnstructuredGrid({cell_type: cells}, points)
+
+
+def load_harmonics(
+        file_name: str,
+        time: int,
+        mesh: pv.UnstructuredGrid | None = None
+) -> Harmonics:
+    """Load the harmonics for one time point from an HDF5 file.
+
+    :param file_name: The name of the HDF5 file written by :func:`save_time_point`.
+    :param time: The time point to load.
+    :param mesh: The mesh the harmonics belong to. If None, it is loaded from
+        the same file (see :func:`load_mesh`).
+    :return: The harmonics at the given time point.
+    """
+    if mesh is None:
+        mesh = load_mesh(file_name, time)
+
+    key = _time_key(time)
+    with h5py.File(file_name, 'r') as h5file:
         harmonics_group = h5file[f'/harmonics/{key}']
         eigenvalues = harmonics_group['eigenvalues'][:]
         harmonic_names = sorted(name for name in harmonics_group if name != 'eigenvalues')
         harmonics = np.vstack([harmonics_group[name][:] for name in harmonic_names])
 
-    cell_type, _ = _CELL_TYPES[cells.shape[1]]
-    mesh = pv.UnstructuredGrid({cell_type: cells}, points)
-
-    return mesh, Harmonics(mesh, harmonics, eigenvalues)
+    return Harmonics(mesh, harmonics, eigenvalues)
 
 
 def time_points(file_name: str) -> list[int]:
