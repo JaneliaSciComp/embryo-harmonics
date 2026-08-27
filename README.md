@@ -20,15 +20,16 @@ Saving a notebook will also automatically update the associated `.py` file.
 ### C. elegans CLI scripts
 `scripts/celegans/process_all_geometries.py` and `scripts/celegans/process_all_genes.py` are plain CLI scripts (not jupytext notebooks). Run `-h` on either for the full list of options.
 
-Generate meshes and harmonics for every time step of an embryo model:
+Generate meshes and harmonics for every time step of an embryo model.
+They are stored in a single HDF5 file with a sibling `.xdmf` file that can be opened in ParaView:
 ```bash
 uv run python scripts/celegans/process_all_geometries.py <path_to_celegans_models.h5> \
-    --output-dir results --n-harmonics 300 --mesh-size 5
+    --output-file results/embryo_harmonics.h5 --n-harmonics 300 --mesh-size 5
 ```
 
 Compute harmonic coefficients for all genes and tissues from the meshes/harmonics produced above:
 ```bash
-uv run python scripts/celegans/process_all_genes.py <path_to_celegans_genedata.h5> results \
+uv run python scripts/celegans/process_all_genes.py <path_to_celegans_genedata.h5> results/embryo_harmonics.h5 \
     --output-file harmonic_coefficients.h5
 ```
 

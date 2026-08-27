@@ -15,9 +15,10 @@ def parse_args():
     )
     parser.add_argument("path", help="Path to celegans_models.h5")
     parser.add_argument(
-        "--output-dir",
-        default=os.path.join(os.getcwd(), "results"),
-        help="Directory to write meshes and harmonics to (default: %(default)s)",
+        "--output-file",
+        default=os.path.join(os.getcwd(), "results", "embryo_harmonics.h5"),
+        help="HDF5 file to write meshes and harmonics to; a sibling .xdmf file "
+        "is generated alongside it (default: %(default)s)",
     )
     parser.add_argument(
         "--n-harmonics",
@@ -52,8 +53,8 @@ def main():
 
     # Load the embryo model and process each time step
     embryo_model_loader = celegans.EmbryoModelLoader(args.path)
-    root = os.path.normpath(args.output_dir)
-    os.makedirs(root, exist_ok=True)
+    output_file = os.path.normpath(args.output_file)
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
     for time_step in tqdm(embryo_model_loader.time_steps):
         logger.info("Processing time step %d", time_step)
@@ -61,13 +62,8 @@ def main():
         mesh = embryo_model.generate_mesh(mesh_size=args.mesh_size)
         harmonics = Harmonics.compute(mesh, n=args.n_harmonics)
 
-        mesh_path = os.path.join(root, f"data_{time_step:03d}.vtu")
-        logger.info("Saving mesh to %s", mesh_path)
-        io.save_mesh(mesh_path, mesh)
-
-        harmonics_path = os.path.join(root, f"harmonics_{time_step:03d}.h5")
-        logger.info("Saving harmonics to %s", harmonics_path)
-        io.save_harmonics(harmonics_path, harmonics)
+        logger.info("Saving mesh and harmonics to %s", output_file)
+        io.save_time_point(output_file, time_step, mesh, harmonics)
 
 
 if __name__ == "__main__":

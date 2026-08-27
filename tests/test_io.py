@@ -4,14 +4,15 @@ import pytest
 
 import pyvista as pv
 import numpy as np
+from vtkmodules.vtkIOXdmf2 import vtkXdmfReader
 
-from embryoharmonics import Harmonics, MeshData
+from embryoharmonics import Harmonics
 from embryoharmonics import io
 
 
-def create_mesh(dim) -> pv.UnstructuredGrid:
+def create_mesh(dim, level=1) -> pv.UnstructuredGrid:
     """Create a simple small mesh for testing purposes."""
-    surface_mesh = pv.Box(level=1).triangulate().cast_to_unstructured_grid()
+    surface_mesh = pv.Box(level=level).triangulate().cast_to_unstructured_grid()
 
     if dim == 2:
         return surface_mesh
@@ -20,66 +21,69 @@ def create_mesh(dim) -> pv.UnstructuredGrid:
 
 
 @pytest.mark.parametrize("dim", [2, 3])
-def test_storing_mesh_works(dim):
-    """Test that storing and loading a mesh works."""
-    mesh = create_mesh(dim)
+def test_storing_time_points_works(dim):
+    """Test that storing and loading meshes and harmonics per time point works."""
+    times = [0, 1]
+    meshes = [create_mesh(dim, level=level + 1) for level in times]
+    harmonics = [Harmonics.compute(mesh, n=5) for mesh in meshes]
+
     with tempfile.TemporaryDirectory() as tmpdirname:
-        file_name = os.path.join(tmpdirname, "test.vtu")
+        file_name = os.path.join(tmpdirname, "test.h5")
 
-        io.save_mesh(file_name, mesh)
-        loaded_mesh = io.load_mesh(file_name)
+        for t, mesh, h in zip(times, meshes, harmonics):
+            io.save_time_point(file_name, t, mesh, h)
 
-    assert loaded_mesh.n_points == mesh.n_points
-    assert loaded_mesh.n_cells == mesh.n_cells
+        assert io.time_points(file_name) == times
+
+        for t, mesh, h in zip(times, meshes, harmonics):
+            loaded_mesh, loaded_harmonics = io.load_time_point(file_name, t)
+            assert loaded_mesh.n_points == mesh.n_points
+            assert loaded_mesh.n_cells == mesh.n_cells
+            assert np.allclose(loaded_mesh.points, mesh.points)
+            assert len(loaded_harmonics) == len(h)
+            assert np.allclose(loaded_harmonics.eigenvalues, h.eigenvalues)
+            assert np.allclose(loaded_harmonics[0].data, h[0].data)
+
+        # Re-saving a time point overwrites it instead of failing
+        io.save_time_point(file_name, times[0], meshes[0], harmonics[0])
+        assert io.time_points(file_name) == times
 
 
-def test_storing_mesh_fails_on_wrong_extension():
-    """Test that storing a mesh fails on wrong extension."""
+def test_storing_time_point_fails_on_wrong_extension():
+    """Test that storing a time point fails on wrong extension."""
     mesh = create_mesh(2)
+    harmonics = Harmonics.compute(mesh, n=3)
     with tempfile.TemporaryDirectory() as tmpdirname:
-        file_name = os.path.join(tmpdirname, "test.stl")
+        file_name = os.path.join(tmpdirname, "test.xdmf")
 
         with pytest.raises(ValueError):
-            io.save_mesh(file_name, mesh)
+            io.save_time_point(file_name, 0, mesh, harmonics)
 
 
 @pytest.mark.parametrize("dim", [2, 3])
-def test_storing_mesh_data_works(dim):
-    """Test that storing and loading data works."""
+def test_xdmf_file_is_readable(dim):
+    """Test that the generated XDMF file can be read back with VTK.
+
+    The vtk wheel only ships the Xdmf2 reader (ParaView has the Xdmf3 one as
+    well); both accept the XML data model written by save_time_point.
+    """
     mesh = create_mesh(dim)
-    data = [
-        MeshData(mesh, "zero", np.zeros(mesh.n_points)),
-        MeshData(mesh, "non-zero", np.arange(mesh.n_points) + 1)
-    ]
+    harmonics = Harmonics.compute(mesh, n=3)
 
     with tempfile.TemporaryDirectory() as tmpdirname:
         file_name = os.path.join(tmpdirname, "test.h5")
+        io.save_time_point(file_name, 42, mesh, harmonics)
 
-        io.save_mesh_data(file_name, data)
-        loaded_data = io.load_mesh_data(file_name, mesh)
+        reader = vtkXdmfReader()
+        reader.SetFileName(os.path.join(tmpdirname, "test.xdmf"))
+        reader.Update()
+        loaded = pv.wrap(reader.GetOutputDataObject(0))
 
-    assert len(loaded_data) == len(data)
-    assert loaded_data[0].name == data[0].name
-    assert all(loaded_data[0].data == data[0].data)
-    assert loaded_data[1].name == data[1].name
-    assert all(loaded_data[1].data == data[1].data)
-
-
-@pytest.mark.parametrize("dim", [2, 3])
-def test_storing_harmonics_works(dim):
-    """Test that storing and loading data works."""
-    mesh = create_mesh(dim)
-    harmonics = Harmonics.compute(mesh, n=mesh.n_points - 1)
-
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        file_name = os.path.join(tmpdirname, "test.h5")
-
-        io.save_harmonics(file_name, harmonics)
-        loaded_data = io.load_harmonics(file_name, mesh)
-
-    assert len(loaded_data) == len(harmonics)
-    assert all(loaded_data.eigenvalues == harmonics.eigenvalues)
-    assert all(loaded_data[0].data == harmonics[0].data)
+        # The temporal collection is returned as a multi-block dataset
+        block = loaded[0] if isinstance(loaded, pv.MultiBlock) else loaded
+        assert block.n_points == mesh.n_points
+        assert block.n_cells == mesh.n_cells
+        assert "harmonic_0" in block.point_data
 
 
 @pytest.mark.parametrize("strings", [["foo"], ["foobar", "bar", "baz"]])

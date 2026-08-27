@@ -1,7 +1,6 @@
 import argparse
 import logging
 import os
-import re
 import time
 
 import h5py
@@ -17,29 +16,15 @@ def parse_args():
     )
     parser.add_argument("gene_path", help="Path to celegans_genedata.h5")
     parser.add_argument(
-        "result_path", help="Path to directory containing meshes and harmonics"
+        "result_path", help="Path to the HDF5 file containing meshes and harmonics"
     )
     parser.add_argument(
         "--output-file",
         default="harmonic_coefficients.h5",
-        help="Name of the output HDF5 file, written to result_path "
+        help="Name of the output HDF5 file, written next to result_path "
         "(default: %(default)s)",
     )
     return parser.parse_args()
-
-
-def find_and_sort_files(directory, regexp):
-    """Find files matching a regular expression in a directory and extract time steps from them."""
-    file_pattern = re.compile(regexp)
-    pairs = [
-        (file, int(match.group(1)))
-        for file in os.listdir(directory)
-        if (match := file_pattern.match(file)) is not None
-    ]
-
-    # Sort both lists based on the extracted numbers
-    sorted_pairs = sorted(pairs, key=lambda pair: pair[1])
-    return zip(*sorted_pairs) if sorted_pairs else ([], [])
 
 
 def write_meta_data(file, gene_data_loader, time_steps, n_harmonics):
@@ -65,8 +50,6 @@ def write_data(
     file,
     gene_data_loader,
     result_path,
-    mesh_files,
-    harmonic_files,
     time_steps,
     n_harmonics,
     logger,
@@ -86,10 +69,7 @@ def write_data(
     for i, t in enumerate(tqdm(time_steps)):
         # Load the current time step and compute coefficients for all genes and tissues
         logger.info("Processing time step %d", t)
-        mesh = io.load_mesh(os.path.join(result_path, mesh_files[i]))
-        harmonics = io.load_harmonics(
-            os.path.join(result_path, harmonic_files[i]), mesh
-        )
+        mesh, harmonics = io.load_time_point(result_path, t)
 
         # Don't remove nans to optimize internal caching of location lookup
         gene_data = [
@@ -132,28 +112,18 @@ def main():
 
     gene_data_loader = celegans.GeneDataLoader(args.gene_path)
 
-    # Discover mesh and harmonics files and make sure the times match
-    mesh_files, mesh_times = find_and_sort_files(args.result_path, r"data_(\d+)\.vtu")
-    harmonic_files, harmonic_times = find_and_sort_files(
-        args.result_path, r"harmonics_(\d+)\.h5"
-    )
-    if len(mesh_files) == 0 or len(harmonic_files) == 0:
-        raise ValueError("No mesh or harmonics files found in the given directory!")
-    if mesh_times != harmonic_times:
-        raise ValueError("Mesh and harmonics files do not match!")
-    logger.info("Found %d mesh and harmonics files", len(mesh_files))
+    # Discover time points with meshes and harmonics
+    result_times = io.time_points(args.result_path)
+    logger.info("Found %d time points with meshes and harmonics", len(result_times))
 
     # Find out at which time steps gene data is actually available and how many harmonics we have
-    time_steps = [t for t in mesh_times if t in gene_data_loader.time_steps]
+    time_steps = [t for t in result_times if t in gene_data_loader.time_steps]
     if len(time_steps) == 0:
         raise ValueError(
-            "No matching time steps found between mesh files and gene data!"
+            "No matching time steps found between result file and gene data!"
         )
 
-    first_mesh = io.load_mesh(os.path.join(args.result_path, mesh_files[0]))
-    first_harmonics = io.load_harmonics(
-        os.path.join(args.result_path, harmonic_files[0]), first_mesh
-    )
+    _, first_harmonics = io.load_time_point(args.result_path, time_steps[0])
     n_harmonics = len(first_harmonics)
     logger.info(
         "Compute coefficients for %d times steps and  %d harmonics",
@@ -162,7 +132,7 @@ def main():
     )
 
     # Execute and write everything
-    target_file_name = os.path.join(args.result_path, args.output_file)
+    target_file_name = os.path.join(os.path.dirname(args.result_path), args.output_file)
     with h5py.File(target_file_name, "w") as target_file:
         logger.info("Write data to %s", target_file_name)
         write_meta_data(target_file, gene_data_loader, time_steps, n_harmonics)
@@ -170,8 +140,6 @@ def main():
             target_file,
             gene_data_loader,
             args.result_path,
-            mesh_files,
-            harmonic_files,
             time_steps,
             n_harmonics,
             logger,
