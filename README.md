@@ -17,3 +17,18 @@ The `.py` scripts in the `scripts/` directory are text representations of notebo
 When you open them in jupyter (right-click and choose 'Open With > Jupytext notebook'), they will be automatically converted to interactive notebooks, which you can find in the `notebooks/` directory.
 Saving a notebook will also automatically update the associated `.py` file.
 
+### C. elegans CLI scripts
+`scripts/celegans/process_all_geometries.py` and `scripts/celegans/process_all_genes.py` are plain CLI scripts (not jupytext notebooks). Run `-h` on either for the full list of options.
+
+Generate meshes and harmonics for every time step of an embryo model:
+```bash
+uv run python scripts/celegans/process_all_geometries.py <path_to_celegans_models.h5> \
+    --output-dir results --n-harmonics 300 --mesh-size 5
+```
+
+Compute harmonic coefficients for all genes and tissues from the meshes/harmonics produced above:
+```bash
+uv run python scripts/celegans/process_all_genes.py <path_to_celegans_genedata.h5> results \
+    --output-file harmonic_coefficients.h5
+```
+
