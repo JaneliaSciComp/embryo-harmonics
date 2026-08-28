@@ -1,7 +1,24 @@
 """Tools and models for working with C. elegans embryo geometry."""
-from .embryo_model import EmbryoModel, transform_mesh
+
+from .axisymmetric import (
+    AxisymmetricHarmonics,
+    load_axisymmetric_harmonics,
+    revolve_meridian,
+    save_axisymmetric_harmonics,
+)
+from .embryo_model import EmbryoModel, axial_profile, transform_mesh
 from .model_loader import EmbryoModelLoader
 from .gene_data import GeneData, GeneDataLoader
 
-__all__ = ["EmbryoModel", "EmbryoModelLoader", "GeneData", "GeneDataLoader",
-           "transform_mesh"]
+__all__ = [
+    "EmbryoModel",
+    "EmbryoModelLoader",
+    "GeneData",
+    "GeneDataLoader",
+    "transform_mesh",
+    "axial_profile",
+    "AxisymmetricHarmonics",
+    "save_axisymmetric_harmonics",
+    "load_axisymmetric_harmonics",
+    "revolve_meridian",
+]

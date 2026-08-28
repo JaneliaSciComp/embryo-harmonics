@@ -2,6 +2,7 @@ import logging
 import math
 
 import numpy as np
+from scipy.integrate import cumulative_trapezoid
 from scipy.interpolate import CubicSpline
 from scipy.spatial import KDTree
 from netgen import occ
@@ -73,6 +74,68 @@ class EmbryoModel:
         geometry = _assemble_embryo_geometry(self, n_interpolation)
         ngs_mesh = _mesh_embryo_geometry(geometry, mesh_size)
         return _to_vtk(ngs_mesh)
+
+
+    def generate_meridian_mesh(
+            self,
+            n_interpolation: int = 32,
+            mesh_size: float = 5.0
+    ) -> pv.UnstructuredGrid:
+        """Generate a 2D triangle mesh of the meridian half-plane domain
+        {(z, r): 0 <= r <= R(z)} of the embryo model, with points (r, 0, z).
+
+        This is only meaningful for rotationally symmetric models (loaded with
+        ``symmetric=True``), whose central spline lies on the z-axis: the 3D
+        embryo is then exactly the body of revolution of this domain.
+
+        :param n_interpolation: The number of points to use for interpolating
+            the radius profile for generating the mesh
+        :param mesh_size: The maximum mesh size
+        :return: A triangle mesh of the meridian domain in the y = 0 plane
+        """
+        _logger.debug("Generating meridian mesh for embryo model")
+        _, R, _, z = axial_profile(self, n_interpolation)
+
+        profile = occ.SplineApproximation([
+            occ.Pnt(r_i, 0, z_i) for r_i, z_i in zip(R, z)
+        ])
+        face = occ.Face(occ.Wire([
+            occ.Segment(occ.Pnt(0, 0, z[0]), occ.Pnt(R[0], 0, z[0])),
+            profile,
+            occ.Segment(occ.Pnt(R[-1], 0, z[-1]), occ.Pnt(0, 0, z[-1])),
+            occ.Segment(occ.Pnt(0, 0, z[-1]), occ.Pnt(0, 0, z[0])),
+        ]))
+        surface_mesh = occ.OCCGeometry(face).GenerateMesh(maxh=mesh_size)
+        return _to_vtk_2d(surface_mesh)
+
+
+def axial_profile(
+        embryo_model: EmbryoModel,
+        n_samples: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Sample the axial coordinate (arclength of the central spline) and
+    radius profile (distance of the 0-th transverse spline from the central
+    axis) of an embryo model.
+
+    :param embryo_model: The embryo model to sample
+    :param n_samples: The number of points to sample the profile at
+    :return: Arclength ``s``, radius profile ``R``, spline domain samples
+        ``t``, and the corresponding z-coordinates of the central spline
+    """
+    domain = embryo_model.spline_domain
+    t_samples = np.linspace(domain[0], domain[-1], n_samples)
+
+    central = embryo_model.central_spline(t_samples)
+    reference = embryo_model.transverse_splines[0](t_samples)
+
+    tangent = embryo_model.central_spline.derivative()(t_samples)
+    speed = np.linalg.norm(tangent, axis=1)
+    s_samples = cumulative_trapezoid(speed, t_samples, initial=0.0)
+
+    R_samples = np.linalg.norm(reference - central, axis=1)
+    z_samples = central[:, 2]
+
+    return s_samples, R_samples, t_samples, z_samples
 
 
 def _mesh_embryo_geometry(
@@ -282,6 +345,20 @@ def _get_spline_surface(
     surf = surf.Rotate(occ.Axis(occ.Pnt(0, 0, 0), occ.X), 90)
     surf = surf.Rotate(occ.Axis(occ.Pnt(0, 0, 0), occ.Z), -angle)
     return surf
+
+
+def _to_vtk_2d(mesh: ng.Mesh) -> pv.UnstructuredGrid:
+    """Convert a netgen surface mesh to a pyvista.UnstructuredGrid object.
+
+    :param mesh: The netgen mesh to convert
+    :return: A :class:`pyvista.UnstructuredGrid` object containing the mesh
+    """
+    points = mesh.Coordinates()
+    # Netgen uses 1-based indexing for vertices
+    cells = np.array([
+        [v.nr - 1 for v in el.vertices] for el in mesh.Elements2D()
+    ])
+    return pv.UnstructuredGrid({int(pv.CellType.TRIANGLE): cells}, points)
 
 
 def _to_vtk(mesh: ngs.Mesh) -> pv.UnstructuredGrid:

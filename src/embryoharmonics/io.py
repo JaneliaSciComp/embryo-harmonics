@@ -103,7 +103,7 @@ def load_harmonics(
     with h5py.File(file_name, 'r') as h5file:
         harmonics_group = h5file[f'/harmonics/{key}']
         eigenvalues = harmonics_group['eigenvalues'][:]
-        harmonic_names = sorted(name for name in harmonics_group if name != 'eigenvalues')
+        harmonic_names = sorted(name for name in harmonics_group if name.startswith('harmonic_'))
         harmonics = np.vstack([harmonics_group[name][:] for name in harmonic_names])
 
     return Harmonics(mesh, harmonics, eigenvalues)
@@ -159,7 +159,7 @@ def _write_xdmf(file_name: str):
 
             harmonics_group = h5file[f'/harmonics/{key}']
             for name in sorted(harmonics_group):
-                if name == 'eigenvalues':
+                if not name.startswith('harmonic_'):
                     continue
                 attribute = ET.SubElement(
                     grid, 'Attribute',

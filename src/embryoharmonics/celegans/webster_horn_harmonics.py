@@ -7,10 +7,9 @@ import logging
 import numpy as np
 import pyvista as pv
 import scipy.sparse as scs
-from scipy.integrate import cumulative_trapezoid
 from scipy.special import jv
 
-from embryoharmonics.celegans.embryo_model import EmbryoModel
+from embryoharmonics.celegans.embryo_model import EmbryoModel, axial_profile
 from embryoharmonics.fem import FemMatrices
 from embryoharmonics.harmonics import Harmonics
 from embryoharmonics.webster_horn import jp_zero, webster_envelopes
@@ -49,7 +48,7 @@ def compute_webster_horn_harmonics(
         ``(m, l, n)`` mode labels (azimuthal order, radial branch, axial
         index). Modes sharing a label form a degenerate cluster.
     """
-    s_samples, R_samples, t_samples, z_samples = _axial_profile(embryo_model, n_samples)
+    s_samples, R_samples, t_samples, z_samples = axial_profile(embryo_model, n_samples)
     candidates = _select_modes(s_samples, R_samples, n, m_max, l_max)
 
     s_node, r_node, theta_node, R_node = _node_axial_coordinates(
@@ -165,33 +164,6 @@ def match_modes(
     ])
     matched = scores.argmax(axis=0)
     return matched, scores[matched, np.arange(coefficients.shape[1])]
-
-
-def _axial_profile(
-        embryo_model: EmbryoModel,
-        n_samples: int
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Sample the axial coordinate (arclength of the central spline) and
-    radius profile (distance of the 0-th transverse spline from the central
-    axis) of an embryo model.
-
-    :return: Arclength ``s``, radius profile ``R``, spline domain samples
-        ``t``, and the corresponding z-coordinates of the central spline
-    """
-    domain = embryo_model.spline_domain
-    t_samples = np.linspace(domain[0], domain[-1], n_samples)
-
-    central = embryo_model.central_spline(t_samples)
-    reference = embryo_model.transverse_splines[0](t_samples)
-
-    tangent = embryo_model.central_spline.derivative()(t_samples)
-    speed = np.linalg.norm(tangent, axis=1)
-    s_samples = cumulative_trapezoid(speed, t_samples, initial=0.0)
-
-    R_samples = np.linalg.norm(reference - central, axis=1)
-    z_samples = central[:, 2]
-
-    return s_samples, R_samples, t_samples, z_samples
 
 
 def _select_modes(
