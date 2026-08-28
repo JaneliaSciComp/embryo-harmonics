@@ -45,14 +45,14 @@ def symmetric_worm():
 
 def _analytic_cylinder_spectrum(n):
     """The lowest Neumann-Laplace eigenvalues of a cylinder with their
-    angular order, expanded into cos/sin pairs for m > 0."""
+    quantum numbers (m, n_r, n_z), expanded into cos/sin pairs for m > 0."""
     modes = []
     for m in range(4):
         for l in range(1, 4):
             for p in range(6):
                 eigenvalue = ((jp_zero(m, l) / CYLINDER_RADIUS) ** 2
                               + (p * np.pi / CYLINDER_LENGTH) ** 2)
-                modes.extend([(eigenvalue, m)] * (1 if m == 0 else 2))
+                modes.extend([(eigenvalue, m, l - 1, p)] * (1 if m == 0 else 2))
     modes.sort()
     return modes[:n]
 
@@ -73,6 +73,22 @@ def test_cylinder_eigenvalues_match_analytic_values(cylinder_harmonics):
         assert cylinder_harmonics.trig_kinds[i - 1] == "cos"
         assert cylinder_harmonics.angular_orders[i - 1] == cylinder_harmonics.angular_orders[i]
         assert cylinder_harmonics.eigenvalues[i - 1] == cylinder_harmonics.eigenvalues[i]
+
+
+def test_nodal_counts_match_analytic_quantum_numbers(cylinder_meridian):
+    """Nodal counting recovers the analytic cylinder quantum numbers
+    (n_r, n_z). Compared as multisets: near-degenerate eigenvalues may swap
+    order at discretization level, but the label set is unambiguous.
+    """
+    # n = 24 reaches the first n_r = 1 mode and ends at a clean spectral gap
+    harmonics = AxisymmetricHarmonics.compute(cylinder_meridian, n=24)
+    radial, axial = harmonics.nodal_counts()
+
+    analytic = _analytic_cylinder_spectrum(len(harmonics))
+    computed = sorted(zip(harmonics.angular_orders, radial, axial))
+    expected = sorted((m[1], m[2], m[3]) for m in analytic)
+    assert computed == expected
+    assert max(m[2] for m in analytic) == 1  # the radial direction is exercised
 
 
 def test_truncation_never_splits_a_degenerate_pair(cylinder_meridian):

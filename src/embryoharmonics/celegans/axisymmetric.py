@@ -212,6 +212,70 @@ class AxisymmetricHarmonics(Harmonics):
         return Harmonics(mesh, fields, self.eigenvalues)
 
 
+    def nodal_counts(self, *, n_samples: int = 256, threshold: float = 0.05):
+        """Count nodal crossings of the meridian fields along the radial and
+        axial directions, yielding approximate "quantum numbers" (n_r, n_z)
+        that complement the exact angular order k.
+
+        Sign changes are counted along coordinate sample lines (axial lines at
+        a few fractions of the local radius, radial lines at a few axial
+        stations), taking the median over lines and ignoring values below
+        ``threshold`` times the mode amplitude. The labels are exact for a
+        cylinder, where the modes separate as f(r) * g(z); for a general
+        profile the nodal lines need not align with coordinate lines, so they
+        are a heuristic.
+
+        :param n_samples: The number of samples per line
+        :param threshold: The relative amplitude below which values are
+            ignored when counting sign changes
+        :return: Two integer arrays (radial counts, axial counts), one entry
+            per mode; degenerate cos/sin partners share their counts
+        """
+        r, z = self.mesh.points[:, 0], self.mesh.points[:, 2]
+        interpolator = LinearNDInterpolator(
+            self.mesh.points[:, [0, 2]], self._harmonics.T
+        )
+        amplitudes = np.abs(self._harmonics).max(axis=1)
+
+        # Local radius R(z) from binned maxima of the mesh node radii
+        # ponytail: 50-bin max profile; exact boundary polyline if the counts
+        # ever misbehave near strongly tapered ends
+        bins = np.linspace(z.min(), z.max(), 51)
+        bin_index = np.clip(np.digitize(z, bins) - 1, 0, 49)
+        radius = np.zeros(50)
+        np.maximum.at(radius, bin_index, r)
+        centers = (bins[:-1] + bins[1:]) / 2
+
+        def crossings(points_rz):
+            values = interpolator(points_rz)
+            counts = np.zeros(len(self), dtype=int)
+            for j in range(len(self)):
+                v = values[:, j]
+                v = v[~np.isnan(v)]
+                v = v[np.abs(v) > threshold * amplitudes[j]]
+                counts[j] = np.count_nonzero(np.diff(np.sign(v)))
+            return counts
+
+        z_line = np.linspace(z.min(), z.max(), n_samples + 2)[1:-1]
+        r_line = np.interp(z_line, centers, radius)
+        axial = np.median([
+            crossings(np.column_stack([fraction * r_line, z_line]))
+            for fraction in (0.35, 0.55, 0.75)
+        ], axis=0).astype(int)
+
+        radial = np.median([
+            crossings(np.column_stack([
+                np.linspace(0, 0.95 * np.interp(z_station, centers, radius),
+                            n_samples)[1:],
+                np.full(n_samples - 1, z_station),
+            ]))
+            for z_station in z.min() + np.array([0.25, 0.4, 0.5, 0.6, 0.75])
+            * (z.max() - z.min())
+        ], axis=0).astype(int)
+
+        return radial, axial
+
+
     def degenerate_clusters(self) -> list[list[int]]:
         """Group mode indices into degenerate clusters: each 'sin' mode joins
         the cluster of the immediately preceding 'cos' partner.
