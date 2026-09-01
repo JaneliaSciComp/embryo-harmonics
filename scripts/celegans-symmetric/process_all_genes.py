@@ -8,15 +8,20 @@ import numpy as np
 from tqdm import tqdm
 
 from embryoharmonics import celegans, io
+from embryoharmonics.celegans import load_axisymmetric_harmonics
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Compute harmonic coefficients for all genes and tissues."
+        description="Compute axisymmetric harmonic coefficients for all genes "
+        "and tissues. The 3D basis is reconstructed per time step by revolving "
+        "the stored meridian mesh."
     )
     parser.add_argument("gene_path", help="Path to celegans_genedata.h5")
     parser.add_argument(
-        "result_path", help="Path to the HDF5 file containing meshes and harmonics"
+        "result_path",
+        help="Path to the HDF5 file containing meridian meshes and "
+        "axisymmetric harmonics",
     )
     parser.add_argument(
         "--output-file",
@@ -24,10 +29,16 @@ def parse_args():
         help="Name of the output HDF5 file, written next to result_path "
         "(default: %(default)s)",
     )
+    parser.add_argument(
+        "--mesh-size",
+        type=float,
+        default=5,
+        help="Mesh size used to generate the revolved 3D mesh (default: %(default)s)",
+    )
     return parser.parse_args()
 
 
-def write_meta_data(file, gene_data_loader, time_steps, n_harmonics):
+def write_meta_data(file, gene_data_loader, time_steps, first_harmonics, n_harmonics):
     """Write metadata about the harmonic coefficients to the given HDF5 file."""
     # Write gene and tissue names
     file.create_dataset(
@@ -41,9 +52,15 @@ def write_meta_data(file, gene_data_loader, time_steps, n_harmonics):
     time_points = np.array(time_steps)
     file.create_dataset("time_points", data=time_points)
 
-    # Write harmonic names to match coefficients to harmonics
+    # Write harmonic names and angular labels to match coefficients to harmonics
     harmonic_names = [f"harmonic_{i:03d}" for i in range(n_harmonics)]
     file.create_dataset("harmonic_names", data=io.encode_matlab_strings(harmonic_names))
+    file.create_dataset(
+        "angular_orders", data=first_harmonics.angular_orders[:n_harmonics]
+    )
+    file.create_dataset(
+        "trig_kinds", data=first_harmonics.trig_kinds[:n_harmonics].astype("S3")
+    )
 
 
 def write_data(
@@ -52,6 +69,7 @@ def write_data(
     result_path,
     time_steps,
     n_harmonics,
+    mesh_size,
     logger,
 ):
     """Write the harmonic coefficients for all genes and tissues to the given HDF5 file."""
@@ -67,10 +85,19 @@ def write_data(
     )
 
     for i, t in enumerate(tqdm(time_steps)):
-        # Load the current time step and compute coefficients for all genes and tissues
+        # Load the current time step and reconstruct the 3D basis
         logger.info("Processing time step %d", t)
-        harmonics = io.load_harmonics(result_path, t)
+        axisymmetric = load_axisymmetric_harmonics(result_path, t)
+        harmonics = axisymmetric.to_full_3d(mesh_size=mesh_size)
         mesh = harmonics.mesh
+
+        # The keep-pairs truncation rule can yield n or n + 1 modes per step
+        m = min(n_harmonics, len(harmonics))
+        if m < len(harmonics):
+            logger.warning(
+                "Time step %d has %d harmonics; keeping the first %d",
+                t, len(harmonics), m,
+            )
 
         # Don't remove nans to optimize internal caching of location lookup
         gene_data = [
@@ -84,9 +111,9 @@ def write_data(
 
         # Sort coefficients into the preallocated arrays
         for j, name in enumerate(gdl.gene_names):
-            gene_coeff[i, j, :] = eigen_coefficients[name]
+            gene_coeff[i, j, :m] = eigen_coefficients[name][:m]
         for j, name in enumerate(gdl.tissue_names):
-            tissue_coeff[i, j, :] = eigen_coefficients[name]
+            tissue_coeff[i, j, :m] = eigen_coefficients[name][:m]
 
     logger.info(
         "Write %d gene and %d tissue coefficients to disk", gdl.n_genes, gdl.n_tissues
@@ -124,10 +151,10 @@ def main():
             "No matching time steps found between result file and gene data!"
         )
 
-    first_harmonics = io.load_harmonics(args.result_path, time_steps[0])
+    first_harmonics = load_axisymmetric_harmonics(args.result_path, time_steps[0])
     n_harmonics = len(first_harmonics)
     logger.info(
-        "Compute coefficients for %d times steps and  %d harmonics",
+        "Compute coefficients for %d times steps and %d harmonics",
         len(time_steps),
         n_harmonics,
     )
@@ -136,13 +163,16 @@ def main():
     target_file_name = os.path.join(os.path.dirname(args.result_path), args.output_file)
     with h5py.File(target_file_name, "w") as target_file:
         logger.info("Write data to %s", target_file_name)
-        write_meta_data(target_file, gene_data_loader, time_steps, n_harmonics)
+        write_meta_data(
+            target_file, gene_data_loader, time_steps, first_harmonics, n_harmonics
+        )
         write_data(
             target_file,
             gene_data_loader,
             args.result_path,
             time_steps,
             n_harmonics,
+            args.mesh_size,
             logger,
         )
 

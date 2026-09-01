@@ -57,12 +57,12 @@ for i in range(min(N, 5)):
     plot_harmonic(mesh, harmonics[i])
 
 # %%
-# It's easy to write and read data in the vtk format:
+# Meshes and harmonics are stored per time point in a single HDF5 file with a
+# sibling XDMF file that can be opened in ParaView:
 # from embryoharmonics import io
-# io.save_mesh("embryo.vtu", mesh)
-# same_mesh = io.load_mesh("embryo.vtu")
-# io.save_harmonics("harmonics.h5", harmonics)
-# same_harmonics = io.load_harmonics("harmonics.h5", mesh)
+# io.save_time_point("embryo.h5", TIME_STEP, mesh, harmonics)
+# same_harmonics = io.load_harmonics("embryo.h5", TIME_STEP)
+# same_mesh = same_harmonics.mesh  # or io.load_mesh("embryo.h5", TIME_STEP)
 
 # %%
 # Gene data can be loaded and smoothly interpolated

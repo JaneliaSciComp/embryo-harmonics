@@ -38,6 +38,12 @@ class Harmonics:
         self.eigenvalues = eigenvalues
 
 
+    @property
+    def mesh(self) -> pv.UnstructuredGrid:
+        """The mesh the harmonics are defined on."""
+        return self._mesh
+
+
     def __getitem__(self, item) -> MeshData:
         if not isinstance(item, int):
             raise TypeError(f"Invalid index type {type(item)}; must be int")

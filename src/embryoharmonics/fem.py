@@ -111,6 +111,95 @@ def compute_mass_and_stiffness_3d(
     return FemMatrices(mass=mass, stiffness=stiffness)
 
 
+def compute_mass_and_stiffness_axisymmetric(
+    mesh: pv.UnstructuredGrid,
+    angular_order: int = 0,
+    compute_mass: bool = True,
+    compute_stiffness: bool = True
+) -> FemMatrices:
+    """
+    Compute the mass and stiffness matrices of the axisymmetric reduction of
+    the 3D Laplace operator on a 2D meridian mesh, for a given angular order.
+
+    The mesh must be a triangular mesh in the y = 0 half-plane with points
+    (r, 0, z), where r >= 0 is the radius and z the axial coordinate. For a
+    body of revolution, separation of variables u(r, theta, z) =
+    v(r, z) * cos/sin(k * theta) turns the 3D eigenproblem into a 2D one with
+
+        mass      int r * v * w dr dz
+        stiffness int r * grad(v) . grad(w) + (k^2 / r) * v * w dr dz
+
+    so the resulting eigenvalues are exactly the 3D ones (up to a common
+    factor of 2*pi that cancels in the generalized eigenproblem). For
+    ``angular_order`` >= 1, eigenfunctions must additionally be constrained
+    to zero on the axis (r = 0) by the caller.
+
+    :param mesh: The meridian triangle mesh with points (r, 0, z)
+    :param angular_order: The angular order k of the modes
+    :param compute_mass: Whether to compute the mass matrix
+    :param compute_stiffness: Whether to compute the stiffness matrix
+    :return: The mass and stiffness matrices as sparse matrices
+    """
+    cell_to_vertex = mesh.cell_connectivity.reshape(-1, 3)
+    matrix_shape = (mesh.n_points, mesh.n_points)
+    mass, stiffness = None, None
+
+    # Compute the area of each cell (det = 2 * area, as in the 2D case)
+    v_0 = mesh.points[cell_to_vertex[:, 0]].astype(np.float64)
+    e_10 = mesh.points[cell_to_vertex[:, 1]].astype(np.float64) - v_0
+    e_20 = mesh.points[cell_to_vertex[:, 2]].astype(np.float64) - v_0
+    element_normal = np.cross(e_10, e_20)
+    det_element_trafo = np.linalg.norm(element_normal, axis=1)
+
+    # Nodal radii per cell; the element-averaged radius is positive since a
+    # non-degenerate triangle cannot have all three vertices on the axis
+    r = mesh.points[:, 0].astype(np.float64)[cell_to_vertex]
+    r_bar = r.mean(axis=1)
+
+    # Set up local to global index mapping
+    row_ind = np.repeat(cell_to_vertex, 3, axis=1).flatten()
+    col_ind = np.tile(cell_to_vertex, (1, 3)).flatten()
+
+    if compute_mass:
+        # Weighted mass matrix int r * phi_i * phi_j, exact for the linear
+        # interpolant of r: from int phi_1^a phi_2^b phi_3^c = 2A a!b!c!/(a+b+c+2)!
+        r_sum = r.sum(axis=1)
+        cell_mass = (det_element_trafo[:, None, None] / 120) * (
+            r_sum[:, None, None] * (np.ones((3, 3)) + np.eye(3))
+            + r[:, :, None] + r[:, None, :]
+            + 2 * np.eye(3) * r[:, :, None]
+        )
+        mass = scs.csr_matrix((cell_mass.flatten(), (row_ind, col_ind)), shape=matrix_shape)
+
+    if compute_stiffness:
+        # Gradient term: gradients are cellwise constant and r is linear, so
+        # weighting the standard 2D cell stiffness by r_bar is exact
+        element_normal /= det_element_trafo[:, np.newaxis]
+        n_0 = np.cross(element_normal, e_20 - e_10)
+        n_1 = np.cross(e_20, element_normal)
+        n_2 = np.cross(element_normal, e_10)
+        normals = np.stack([n_0, n_1, n_2], axis=1)
+        cell_stiffness = (r_bar[:, None, None]
+                          * np.einsum("...jk,...lk->...jl", normals, normals)
+                          / (2 * np.expand_dims(det_element_trafo, axis=(1, 2))))
+
+        if angular_order > 0:
+            # ponytail: centroid quadrature for the 1/r weight; exact 1/r
+            # integration if axis-adjacent accuracy ever matters (irrelevant
+            # while k >= 1 modes are constrained to zero on the axis)
+            cell_stiffness = cell_stiffness + (
+                (angular_order**2 / r_bar)[:, None, None]
+                * det_element_trafo[:, None, None]
+                * (np.ones((3, 3)) + np.eye(3)) / 24
+            )
+
+        stiffness = scs.csr_matrix(
+            (cell_stiffness.flatten(), (row_ind, col_ind)), shape=matrix_shape
+        )
+
+    return FemMatrices(mass=mass, stiffness=stiffness)
+
+
 def compute_mass_and_stiffness_2d(
     mesh: pv.UnstructuredGrid,
     compute_mass: bool = True,

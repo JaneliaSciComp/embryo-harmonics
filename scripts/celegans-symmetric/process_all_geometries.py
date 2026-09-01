@@ -5,20 +5,21 @@ import time
 
 from tqdm import tqdm
 
-from embryoharmonics import celegans, io
-from embryoharmonics import Harmonics
+from embryoharmonics import celegans
+from embryoharmonics.celegans import AxisymmetricHarmonics, save_axisymmetric_harmonics
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Generate meshes and harmonics for all C. elegans embryo model time steps."
+        description="Generate meridian meshes and axisymmetric harmonics for "
+        "all (rotationally symmetrized) C. elegans embryo model time steps."
     )
     parser.add_argument("path", help="Path to celegans_models.h5")
     parser.add_argument(
         "--output-file",
-        default=os.path.join(os.getcwd(), "results", "embryo_harmonics.h5"),
-        help="HDF5 file to write meshes and harmonics to; a sibling .xdmf file "
-        "is generated alongside it (default: %(default)s)",
+        default=os.path.join(os.getcwd(), "results", "symmetric_embryo_harmonics.h5"),
+        help="HDF5 file to write meridian meshes and harmonics to; a sibling "
+        ".xdmf file is generated alongside it (default: %(default)s)",
     )
     parser.add_argument(
         "--n-harmonics",
@@ -30,7 +31,7 @@ def parse_args():
         "--mesh-size",
         type=float,
         default=5,
-        help="Mesh size used to generate the embryo mesh (default: %(default)s)",
+        help="Mesh size used to generate the meridian mesh (default: %(default)s)",
     )
     return parser.parse_args()
 
@@ -58,12 +59,12 @@ def main():
 
     for time_step in tqdm(embryo_model_loader.time_steps):
         logger.info("Processing time step %d", time_step)
-        embryo_model = embryo_model_loader.load(time_step)
-        mesh = embryo_model.generate_mesh(mesh_size=args.mesh_size)
-        harmonics = Harmonics.compute(mesh, n=args.n_harmonics)
+        embryo_model = embryo_model_loader.load(time_step, symmetric=True)
+        mesh = embryo_model.generate_meridian_mesh(mesh_size=args.mesh_size)
+        harmonics = AxisymmetricHarmonics.compute(mesh, n=args.n_harmonics)
 
-        logger.info("Saving mesh and harmonics to %s", output_file)
-        io.save_time_point(output_file, time_step, mesh, harmonics)
+        logger.info("Saving meridian mesh and harmonics to %s", output_file)
+        save_axisymmetric_harmonics(output_file, time_step, harmonics)
 
 
 if __name__ == "__main__":
