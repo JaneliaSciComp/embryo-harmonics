@@ -69,6 +69,7 @@ class AxisymmetricHarmonics(Harmonics):
             mesh: pv.UnstructuredGrid,
             *,
             n: int = 10,
+            angular_order: int | None = None,
     ) -> "AxisymmetricHarmonics":
         """Compute the first n harmonics of the body of revolution described
         by the given meridian mesh.
@@ -81,6 +82,9 @@ class AxisymmetricHarmonics(Harmonics):
 
         :param mesh: The meridian triangle mesh with points (r, 0, z)
         :param n: The number of (3D) harmonics to compute
+        :param angular_order: If given, compute only this angular branch: the
+            n lowest meridian modes of order k, one entry per meridian mode
+            ('cos' only; the degenerate 'sin' partners are not duplicated)
         :return: The axisymmetric harmonics, sorted by eigenvalue
         """
         _logger.info("Computing the first %d axisymmetric harmonics", n)
@@ -89,7 +93,7 @@ class AxisymmetricHarmonics(Harmonics):
 
         candidates = []
         expanded_count = 0
-        k = 0
+        k = 0 if angular_order is None else angular_order
         while True:
             fem = compute_mass_and_stiffness_axisymmetric(mesh, angular_order=k)
             mass, stiffness = fem.mass, fem.stiffness
@@ -119,6 +123,8 @@ class AxisymmetricHarmonics(Harmonics):
             expanded_count += n_modes if k == 0 else 2 * n_modes
             _logger.debug("Branch k=%d: lowest eigenvalue %g", k, eigenvalues[0])
 
+            if angular_order is not None:
+                break
             if expanded_count >= n:
                 cutoff = sorted(
                     c["eigenvalue"] for c in candidates
@@ -134,7 +140,8 @@ class AxisymmetricHarmonics(Harmonics):
         # never splitting a pair across the truncation boundary
         fields, eigenvalues, angular_orders, trig_kinds = [], [], [], []
         for candidate in candidates:
-            trigs = ("cos",) if candidate["k"] == 0 else ("cos", "sin")
+            pair = angular_order is None and candidate["k"] > 0
+            trigs = ("cos", "sin") if pair else ("cos",)
             for trig in trigs:
                 fields.append(candidate["field"])
                 eigenvalues.append(candidate["eigenvalue"])

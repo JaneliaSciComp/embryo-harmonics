@@ -91,6 +91,20 @@ def test_nodal_counts_match_analytic_quantum_numbers(cylinder_meridian):
     assert max(m[2] for m in analytic) == 1  # the radial direction is exercised
 
 
+def test_single_branch_compute_matches_analytic_branch(cylinder_meridian):
+    """Computing one angular branch yields its lowest meridian modes, one
+    'cos' entry each (no sin duplication)."""
+    harmonics = AxisymmetricHarmonics.compute(cylinder_meridian, n=5, angular_order=2)
+
+    expected = sorted(
+        (jp_zero(2, l) / CYLINDER_RADIUS) ** 2 + (p * np.pi / CYLINDER_LENGTH) ** 2
+        for l in range(1, 4) for p in range(6)
+    )[:5]
+    assert np.allclose(harmonics.eigenvalues, expected, rtol=2e-2)
+    assert all(harmonics.angular_orders == 2)
+    assert all(harmonics.trig_kinds == "cos")
+
+
 def test_truncation_never_splits_a_degenerate_pair(cylinder_meridian):
     """If the requested count would cut a cos/sin pair in half, the sin
     partner is included as well.
