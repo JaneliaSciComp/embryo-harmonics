@@ -29,7 +29,7 @@ def parse_args():
     parser.add_argument(
         "--mesh-size",
         type=float,
-        default=5,
+        default=4.9,
         help="Mesh size used to generate the embryo mesh (default: %(default)s)",
     )
     return parser.parse_args()
