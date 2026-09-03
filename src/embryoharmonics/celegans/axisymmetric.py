@@ -108,8 +108,14 @@ class AxisymmetricHarmonics(Harmonics):
                     "Mesh too coarse to compute %d modes per branch; capped at %d",
                     n, n_modes
                 )
+            # The k = 0 Neumann stiffness is singular (constant mode), which
+            # can make the shift-invert factorization at sigma = 0 fail; use a
+            # small negative shift (relative to the mean eigenvalue scale) so
+            # stiffness - sigma * mass is definite. Any sigma below the lowest
+            # eigenvalue leaves the computed modes unchanged.
+            sigma = -1e-6 * stiffness.diagonal().sum() / mass.diagonal().sum()
             eigenvalues, eigenvectors = spla.eigsh(
-                A=stiffness, M=mass, k=n_modes, which='LM', sigma=0.0
+                A=stiffness, M=mass, k=n_modes, which='LM', sigma=sigma
             )
 
             fields = eigenvectors.T

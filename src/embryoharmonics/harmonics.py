@@ -84,7 +84,13 @@ class Harmonics:
         # Set up lowest-order finite element problem for the Laplace operator
         _logger.info("Computing the first %d harmonics on the given mesh", n)
         fem = FemMatrices.compute_for(mesh)
-        eigvals, eigvecs = spla.eigsh(A=fem.stiffness, M=fem.mass, k=n, which='LM', sigma=0.0)
+        # The Neumann stiffness is singular (constant mode), which can make the
+        # shift-invert factorization at sigma = 0 fail; use a small negative
+        # shift (relative to the mean eigenvalue scale) so stiffness - sigma *
+        # mass is definite. Any sigma below the lowest eigenvalue leaves the
+        # computed modes unchanged.
+        sigma = -1e-6 * fem.stiffness.diagonal().sum() / fem.mass.diagonal().sum()
+        eigvals, eigvecs = spla.eigsh(A=fem.stiffness, M=fem.mass, k=n, which='LM', sigma=sigma)
 
         return Harmonics(mesh, eigvecs.T, eigvals)
 
