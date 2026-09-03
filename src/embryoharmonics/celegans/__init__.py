@@ -7,6 +7,7 @@ from .axisymmetric import (
     save_axisymmetric_harmonics,
 )
 from .embryo_model import EmbryoModel, axial_profile, transform_mesh
+from .webster_horn_harmonics import compute_webster_horn_meridian_harmonics
 from .model_loader import EmbryoModelLoader
 from .gene_data import GeneData, GeneDataLoader
 
@@ -21,4 +22,5 @@ __all__ = [
     "save_axisymmetric_harmonics",
     "load_axisymmetric_harmonics",
     "revolve_meridian",
+    "compute_webster_horn_meridian_harmonics",
 ]
