@@ -75,11 +75,11 @@ def write_data(
     """Write the harmonic coefficients for all genes and tissues to the given HDF5 file."""
     # Set up arrays of coefficients to be filled
     gdl = gene_data_loader
-    gene_coeff = np.zeros((gdl.n_time_steps, gdl.n_genes, n_harmonics), dtype=np.float64)
-    tissue_coeff = np.zeros((gdl.n_time_steps, gdl.n_tissues, n_harmonics), dtype=np.float64)
+    gene_coeff = np.zeros((len(time_steps), gdl.n_genes, n_harmonics), dtype=np.float64)
+    tissue_coeff = np.zeros((len(time_steps), gdl.n_tissues, n_harmonics), dtype=np.float64)
     logger.info(
         "Preallocated arrays for %d time steps, %d genes and %d tissues",
-        gdl.n_time_steps,
+        len(time_steps),
         gdl.n_genes,
         gdl.n_tissues,
     )
