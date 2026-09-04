@@ -19,6 +19,7 @@ from embryoharmonics.celegans import AxisymmetricHarmonics
 # %%
 ROOT = os.path.join(os.getcwd(), 'tests', 'resources')
 MODEL_PATH = os.path.join(ROOT, 'celegans_models.h5')
+# A directory of parquet files (e.g. 'data/cpm-20260828') works here as well
 GENE_PATH = os.path.join(ROOT, 'celegans_genedata.h5')
 pv.set_jupyter_backend('client')
 
@@ -89,7 +90,7 @@ mesh_3d.clear_data()
 # %%
 # Gene expression data is decomposed against the reconstructed 3D basis
 GENE_NAME = "cwn-1"
-gene_data_loader = celegans.GeneDataLoader(GENE_PATH)
+gene_data_loader = celegans.open_gene_data_loader(GENE_PATH)
 gene_data = gene_data_loader.load(GENE_NAME, TIME_STEP)
 
 # TODO: there is a mismatch between the scales of the geometry and the gene data

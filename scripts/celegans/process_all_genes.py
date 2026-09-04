@@ -14,7 +14,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Compute harmonic coefficients for all genes and tissues."
     )
-    parser.add_argument("gene_path", help="Path to celegans_genedata.h5")
+    parser.add_argument("gene_path", help="Path to the gene data: an HDF5 file or a directory of parquet files")
     parser.add_argument(
         "result_path", help="Path to the HDF5 file containing meshes and harmonics"
     )
@@ -111,7 +111,7 @@ def main():
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-    gene_data_loader = celegans.GeneDataLoader(args.gene_path)
+    gene_data_loader = celegans.open_gene_data_loader(args.gene_path)
 
     # Discover time points with meshes and harmonics
     result_times = io.time_points(args.result_path)

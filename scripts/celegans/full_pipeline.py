@@ -10,6 +10,7 @@ from embryoharmonics import celegans
 # %%
 ROOT = os.path.join(os.getcwd(), 'tests', 'resources')
 MODEL_PATH = os.path.join(ROOT, 'celegans_models.h5')
+# A directory of parquet files (e.g. 'data/cpm-20260828') works here as well
 GENE_PATH = os.path.join(ROOT, 'celegans_genedata.h5')
 pv.set_jupyter_backend('client')
 
@@ -67,7 +68,7 @@ for i in range(min(N, 5)):
 # %%
 # Gene data can be loaded and smoothly interpolated
 GENE_NAME = "cwn-1"
-gene_data_loader = celegans.GeneDataLoader(GENE_PATH)
+gene_data_loader = celegans.open_gene_data_loader(GENE_PATH)
 gene_data = gene_data_loader.load(GENE_NAME, TIME_STEP)
 
 # Tissue data can be loaded similarly to gene_data
