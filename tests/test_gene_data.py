@@ -1,3 +1,5 @@
+import warnings
+
 import pytest
 
 import numpy as np
@@ -105,6 +107,16 @@ def test_gene_data_loader_load_tissue(gene_data_loader):
 
     assert tissue_data.name == "muscle"
     assert len(tissue_data) == gene_data_loader.n_cells
+
+
+def test_parquet_format_not_finalized():
+    """Placeholder until the parquet gene data format is standardized and a real
+    example file exists; the parquet tests below only use a synthetic fixture.
+    """
+    warnings.warn(
+        "The parquet gene data format is not standardized yet: "
+        "ParquetGeneDataLoader is only tested against a synthetic fixture."
+    )
 
 
 def test_parquet_gene_data_loader():
