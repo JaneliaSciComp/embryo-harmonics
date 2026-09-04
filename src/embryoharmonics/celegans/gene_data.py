@@ -1,11 +1,15 @@
 import functools
 import hashlib
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any
 
 import h5py
 import numpy as np
+import pyarrow.compute as pc
+import pyarrow.dataset as ds
+import pyarrow.parquet as pq
 import scipy.sparse.linalg as spla
 import pyvista as pv
 
@@ -203,6 +207,148 @@ class GeneDataLoader:
         _logger.info("Loading tissue %s at time step %d from '%s'",
                      tissue_name, time_step, self.h5file.filename)
         return GeneData(tissue_name, self._locations[t, :, :], self._tissues[tissue_index, :])
+
+
+class ParquetGeneDataLoader:
+    """Loader for gene expression data from a directory of parquet files
+    (``genes.parquet``, ``lineages.parquet``, ``cpm.parquet``, ``xyz.parquet``,
+    ``xyz-lineages.parquet``). Expression values (keyed by lineage and time
+    point) are joined onto the cell positions by lineage name. The format has
+    no tissue data, so ``tissue_names`` is empty.
+    """
+    def __init__(self, directory: str):
+        """Initialize the gene data loader.
+
+        :param directory: The directory containing the parquet files.
+        """
+        self.directory = directory
+        path = functools.partial(os.path.join, directory)
+
+        genes = pq.read_table(path("genes.parquet")).to_pydict()
+        self._gene_to_index = dict(zip(genes["GE"], genes["i"]))
+
+        # Expression and position tables use different lineage ID lists; build
+        # a lookup from expression lineage ID to position lineage ID by name
+        cpm_lineages = pq.read_table(path("lineages.parquet")).to_pydict()
+        xyz_lineages = pq.read_table(path("xyz-lineages.parquet")).to_pydict()
+        xyz_name_to_index = dict(zip(xyz_lineages["LI"], xyz_lineages["i"]))
+        self._cpm_to_xyz_lineage = np.full(max(cpm_lineages["i"]) + 1, -1)
+        for i, name in zip(cpm_lineages["i"], cpm_lineages["LI"]):
+            self._cpm_to_xyz_lineage[i] = xyz_name_to_index.get(name, -1)
+
+        self._xyz = pq.read_table(path("xyz.parquet"))
+        self._cpm = ds.dataset(path("cpm.parquet"))
+
+        # Time steps need both expression and position data
+        cpm_times = set()
+        for batch in self._cpm.scanner(columns=["TI"]).to_batches():
+            cpm_times.update(np.unique(batch["TI"].to_numpy()).tolist())
+        xyz_times = set(pc.unique(self._xyz["TI"]).to_pylist())
+        self._time_steps = sorted(int(t) for t in cpm_times & xyz_times)
+
+        # Expression matrix and locations of the most recently loaded time step
+        self._cached_time_step = None
+        self._cached_locations = None
+        self._cached_activities = None
+
+
+    @property
+    def gene_names(self) -> list[str]:
+        return list(self._gene_to_index.keys())
+
+
+    @property
+    def tissue_names(self) -> list[str]:
+        return []
+
+
+    @property
+    def time_steps(self) -> list[int]:
+        return list(self._time_steps)
+
+
+    @property
+    def n_genes(self) -> int:
+        return len(self._gene_to_index)
+
+
+    @property
+    def n_tissues(self) -> int:
+        return 0
+
+
+    @property
+    def n_time_steps(self) -> int:
+        return len(self._time_steps)
+
+
+    def _load_time_step(self, time_step: int) -> None:
+        """Read all expression values and positions of a time step and arrange
+        them like the HDF5 layout: a (gene, cell) matrix plus (cell, 3) locations.
+        """
+        if self._cached_time_step == time_step:
+            return
+
+        if time_step not in self._time_steps:
+            raise ValueError(f"Time step {time_step} not found in '{self.directory}'")
+
+        _logger.info("Reading time step %d from '%s'", time_step, self.directory)
+        xyz = self._xyz.filter(pc.field("TI") == time_step)
+        xyz_ids = xyz["iLI"].to_numpy()
+        locations = np.stack([xyz[c].to_numpy() for c in ("LR", "DV", "AP")], axis=1)
+
+        cpm = self._cpm.to_table(filter=pc.field("TI") == time_step)
+        row_of_xyz_id = np.full(xyz_ids.max() + 1, -1)
+        row_of_xyz_id[xyz_ids] = np.arange(len(xyz_ids))
+        xyz_id = self._cpm_to_xyz_lineage[cpm["iLI"].to_numpy()]
+        rows = np.where(xyz_id >= 0, row_of_xyz_id[np.clip(xyz_id, 0, None)], -1)
+        valid = rows >= 0
+        if not valid.all():
+            _logger.warning("Dropping %d expression values without cell position at time step %d",
+                            (~valid).sum(), time_step)
+
+        activities = np.full((max(self._gene_to_index.values()) + 1, len(xyz_ids)), np.nan,
+                             dtype=np.float32)
+        activities[cpm["iGE"].to_numpy()[valid], rows[valid]] = cpm["CPM_mean"].to_numpy()[valid]
+
+        self._cached_time_step = time_step
+        self._cached_locations = locations
+        self._cached_activities = activities
+
+
+    def load(
+            self,
+            gene_name: str,
+            time_step: int,
+            remove_nans: bool = True
+    ) -> GeneData:
+        """Load the gene expression data for the given gene; see
+        :meth:`GeneDataLoader.load`. Cells without expression data get NaN.
+        """
+        try:
+            g = self._gene_to_index[gene_name]
+        except KeyError as e:
+            raise ValueError(f"Gene {gene_name} not found in '{self.directory}'") from e
+
+        self._load_time_step(time_step)
+        locations = self._cached_locations
+        activities = self._cached_activities[g]
+
+        if remove_nans:
+            locations, activities = _filter_nan_values(activities, locations)
+
+        return GeneData(gene_name, locations, activities)
+
+
+    def load_tissue(self, tissue_name: str, time_step: int) -> GeneData:
+        raise ValueError(f"No tissue data in parquet gene data '{self.directory}'")
+
+
+def open_gene_data_loader(path: str) -> GeneDataLoader | ParquetGeneDataLoader:
+    """Open gene expression data in either format: a directory of parquet
+    files or a single HDF5 file.
+    """
+    return ParquetGeneDataLoader(path) if os.path.isdir(path) else GeneDataLoader(path)
 
 
 def _convert_raw_names(raw_names):
