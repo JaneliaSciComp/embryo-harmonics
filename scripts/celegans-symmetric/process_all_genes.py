@@ -35,6 +35,14 @@ def parse_args():
         default=5,
         help="Mesh size used to generate the revolved 3D mesh (default: %(default)s)",
     )
+    parser.add_argument(
+        "--time-offset",
+        type=int,
+        default=0,
+        help="Gene data at time step t is matched to the results at time step "
+        "t - offset, e.g. 419 for models numbered from 1 and gene data in minutes "
+        "from 420 (default: %(default)s)",
+    )
     return parser.parse_args()
 
 
@@ -70,6 +78,7 @@ def write_data(
     time_steps,
     n_harmonics,
     mesh_size,
+    time_offset,
     logger,
 ):
     """Write the harmonic coefficients for all genes and tissues to the given HDF5 file."""
@@ -87,7 +96,7 @@ def write_data(
     for i, t in enumerate(tqdm(time_steps)):
         # Load the current time step and reconstruct the 3D basis
         logger.info("Processing time step %d", t)
-        axisymmetric = load_axisymmetric_harmonics(result_path, t)
+        axisymmetric = load_axisymmetric_harmonics(result_path, t - time_offset)
         harmonics = axisymmetric.to_full_3d(mesh_size=mesh_size)
         mesh = harmonics.mesh
 
@@ -145,13 +154,13 @@ def main():
     logger.info("Found %d time points with meshes and harmonics", len(result_times))
 
     # Find out at which time steps gene data is actually available and how many harmonics we have
-    time_steps = [t for t in result_times if t in gene_data_loader.time_steps]
+    time_steps = [t for t in gene_data_loader.time_steps if t - args.time_offset in result_times]
     if len(time_steps) == 0:
         raise ValueError(
             "No matching time steps found between result file and gene data!"
         )
 
-    first_harmonics = load_axisymmetric_harmonics(args.result_path, time_steps[0])
+    first_harmonics = load_axisymmetric_harmonics(args.result_path, time_steps[0] - args.time_offset)
     n_harmonics = len(first_harmonics)
     logger.info(
         "Compute coefficients for %d times steps and %d harmonics",
@@ -173,6 +182,7 @@ def main():
             time_steps,
             n_harmonics,
             args.mesh_size,
+            args.time_offset,
             logger,
         )
 

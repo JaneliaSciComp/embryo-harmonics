@@ -24,6 +24,14 @@ def parse_args():
         help="Name of the output HDF5 file, written next to result_path "
         "(default: %(default)s)",
     )
+    parser.add_argument(
+        "--time-offset",
+        type=int,
+        default=0,
+        help="Gene data at time step t is matched to the results at time step "
+        "t - offset, e.g. 419 for models numbered from 1 and gene data in minutes "
+        "from 420 (default: %(default)s)",
+    )
     return parser.parse_args()
 
 
@@ -52,6 +60,7 @@ def write_data(
     result_path,
     time_steps,
     n_harmonics,
+    time_offset,
     logger,
 ):
     """Write the harmonic coefficients for all genes and tissues to the given HDF5 file."""
@@ -69,7 +78,7 @@ def write_data(
     for i, t in enumerate(tqdm(time_steps)):
         # Load the current time step and compute coefficients for all genes and tissues
         logger.info("Processing time step %d", t)
-        harmonics = io.load_harmonics(result_path, t)
+        harmonics = io.load_harmonics(result_path, t - time_offset)
         mesh = harmonics.mesh
 
         # Don't remove nans to optimize internal caching of location lookup
@@ -118,13 +127,13 @@ def main():
     logger.info("Found %d time points with meshes and harmonics", len(result_times))
 
     # Find out at which time steps gene data is actually available and how many harmonics we have
-    time_steps = [t for t in result_times if t in gene_data_loader.time_steps]
+    time_steps = [t for t in gene_data_loader.time_steps if t - args.time_offset in result_times]
     if len(time_steps) == 0:
         raise ValueError(
             "No matching time steps found between result file and gene data!"
         )
 
-    first_harmonics = io.load_harmonics(args.result_path, time_steps[0])
+    first_harmonics = io.load_harmonics(args.result_path, time_steps[0] - args.time_offset)
     n_harmonics = len(first_harmonics)
     logger.info(
         "Compute coefficients for %d times steps and  %d harmonics",
@@ -143,6 +152,7 @@ def main():
             args.result_path,
             time_steps,
             n_harmonics,
+            args.time_offset,
             logger,
         )
 
