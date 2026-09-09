@@ -89,11 +89,6 @@ GENE_NAME = "cwn-1"
 gene_data_loader = celegans.open_gene_data_loader(GENE_PATH)
 gene_data = gene_data_loader.load(GENE_NAME, TIME_STEP)
 
-# TODO: there is a mismatch between the scales of the geometry and the gene data
-#   (about a factor of 5) - fix this in a general way!
-# If the factor is chosen too large, some points are outside the domain
-gene_data.locations *= 5
-
 mesh_data = gene_data.interpolate(full.mesh)
 coefficients = full.decompose(mesh_data)[GENE_NAME]
 

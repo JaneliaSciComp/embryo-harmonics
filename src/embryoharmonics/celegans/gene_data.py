@@ -19,6 +19,12 @@ from embryoharmonics.mesh_data import MeshData
 
 _logger = logging.getLogger(__name__)
 
+# Gene data positions are in microns, the geometry in voxels of 0.1625 microns.
+# The exact factor 1/0.1625 leaves many cells outside the geometry, since the
+# gene data are smoothed in time and the geometries are not; 5 keeps almost all
+# cells inside until that is resolved.
+LOCATION_SCALE = 5.0
+
 
 @dataclass
 class GeneData:
@@ -171,7 +177,7 @@ class GeneDataLoader:
         except KeyError as e:
             raise ValueError(f"Gene {gene_name} not found in the HDF5 file") from e
 
-        locations = self._locations[t, :, :]
+        locations = self._locations[t, :, :] * LOCATION_SCALE
         activities = self._gene_activities[t, g, :]
 
         if remove_nans:
@@ -206,7 +212,8 @@ class GeneDataLoader:
 
         _logger.info("Loading tissue %s at time step %d from '%s'",
                      tissue_name, time_step, self.h5file.filename)
-        return GeneData(tissue_name, self._locations[t, :, :], self._tissues[tissue_index, :])
+        return GeneData(tissue_name, self._locations[t, :, :] * LOCATION_SCALE,
+                        self._tissues[tissue_index, :])
 
 
 class ParquetGeneDataLoader:
@@ -295,7 +302,7 @@ class ParquetGeneDataLoader:
         _logger.info("Reading time step %d from '%s'", time_step, self.directory)
         xyz = self._xyz.filter(pc.field("TI") == time_step)
         xyz_ids = xyz["iLI"].to_numpy()
-        locations = np.stack([xyz[c].to_numpy() for c in ("LR", "DV", "AP")], axis=1)
+        locations = np.stack([xyz[c].to_numpy() for c in ("LR", "DV", "AP")], axis=1) * LOCATION_SCALE
 
         cpm = self._cpm.to_table(filter=pc.field("TI") == time_step)
         row_of_xyz_id = np.full(xyz_ids.max() + 1, -1)

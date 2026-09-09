@@ -74,11 +74,6 @@ gene_data = gene_data_loader.load(GENE_NAME, TIME_STEP)
 # Tissue data can be loaded similarly to gene_data
 # gene_data = gene_data_loader.load_tissue("intestine", TIME_STEP)
 
-# TODO: there is a mismatch between the scales of the geometry and the gene data
-#   (about a factor of 5) - fix this in a general way!
-# If the factor is chosen too large, some points are outside the domain
-gene_data.locations *= 5
-
 # %%
 # The gene expression data can be easily visualized alongside the mesh
 plotter = pv.Plotter()

@@ -131,12 +131,12 @@ def test_parquet_gene_data_loader():
     # cells at t=100 in xyz order: P2, EMS, ABa, ABpa; 'ABp' expression has no cell
     gene_data = gdl.load("cwn-1", 100, remove_nans=False)
     assert len(gene_data) == 4
-    np.testing.assert_array_equal(gene_data.locations[:, 2], [5.0, 6.0, 7.0, 8.0])
+    np.testing.assert_array_equal(gene_data.locations[:, 2], [25.0, 30.0, 35.0, 40.0])
     np.testing.assert_array_equal(gene_data.activities, [np.nan, 30.0, 10.0, np.nan])
 
     gene_data = gdl.load("pal-1", 100)
     np.testing.assert_array_equal(gene_data.activities, [3.0, 1.0])
-    np.testing.assert_array_equal(gene_data.locations[:, 0], [1.0, 2.0])
+    np.testing.assert_array_equal(gene_data.locations[:, 0], [5.0, 10.0])
 
     # loading another time step invalidates the per-time-step cache
     gene_data = gdl.load("cwn-1", 104)
