@@ -108,21 +108,13 @@ def write_data(
                 t, len(harmonics), m,
             )
 
-        # Don't remove nans to optimize internal caching of location lookup
-        gene_data = [
-            gdl.load(gene, t, remove_nans=False).interpolate(mesh)
-            for gene in gdl.gene_names
-        ]
-        tissue_data = [
-            gdl.load_tissue(tissue, t).interpolate(mesh) for tissue in gdl.tissue_names
-        ]
-        eigen_coefficients = harmonics.decompose(gene_data + tissue_data)
-
-        # Sort coefficients into the preallocated arrays
-        for j, name in enumerate(gdl.gene_names):
-            gene_coeff[i, j, :m] = eigen_coefficients[name][:m]
-        for j, name in enumerate(gdl.tissue_names):
-            tissue_coeff[i, j, :m] = eigen_coefficients[name][:m]
+        # Decompose all genes and tissues at once, skipping the interpolation
+        locations, activities = gdl.load_all(t)
+        coefficients = harmonics.decompose_point_data(
+            celegans.interpolation_matrix(mesh, locations), activities
+        )
+        gene_coeff[i, :, :m] = coefficients[:gdl.n_genes, :m]
+        tissue_coeff[i, :, :m] = coefficients[gdl.n_genes:, :m]
 
     logger.info(
         "Write %d gene and %d tissue coefficients to disk", gdl.n_genes, gdl.n_tissues
