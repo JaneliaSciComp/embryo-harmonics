@@ -4,10 +4,12 @@ import pytest
 
 import numpy as np
 
+from embryoharmonics import Harmonics
 from embryoharmonics.celegans import (
     GeneData,
     GeneDataLoader,
     ParquetGeneDataLoader,
+    interpolation_matrix,
     open_gene_data_loader,
 )
 
@@ -153,3 +155,40 @@ def test_parquet_gene_data_loader():
 def test_open_gene_data_loader_h5():
     """Test that a single file opens as the HDF5 loader."""
     assert isinstance(open_gene_data_loader("tests/resources/celegans_genedata.h5"), GeneDataLoader)
+
+
+def test_load_all_matches_single_loads(gene_data_loader):
+    """Test that loading all genes and tissues at once gives the same data as
+    loading them one by one.
+    """
+    t = gene_data_loader.time_steps[0]
+    locations, activities = gene_data_loader.load_all(t)
+
+    gene = gene_data_loader.load(gene_data_loader.gene_names[1], t, remove_nans=False)
+    tissue = gene_data_loader.load_tissue(gene_data_loader.tissue_names[0], t)
+    assert activities.shape == (gene_data_loader.n_genes + gene_data_loader.n_tissues, len(gene))
+    np.testing.assert_array_equal(locations, gene.locations)
+    np.testing.assert_array_equal(activities[1], gene.activities)
+    np.testing.assert_array_equal(activities[gene_data_loader.n_genes], tissue.activities)
+
+    parquet_loader = open_gene_data_loader("tests/resources/celegans_genedata_parquet")
+    locations, activities = parquet_loader.load_all(100)
+    np.testing.assert_array_equal(locations[:, 2], [25.0, 30.0, 35.0, 40.0])
+    np.testing.assert_array_equal(activities[0], [np.nan, 30.0, 10.0, np.nan])
+    np.testing.assert_array_equal(activities[1], parquet_loader.load("pal-1", 100, remove_nans=False).activities)
+
+
+def test_point_data_decomposition_matches_interpolation(embryo_mesh):
+    """Test that decomposing point data directly equals interpolating it onto
+    the mesh and decomposing the result.
+    """
+    harmonics = Harmonics.compute(embryo_mesh, n=4)
+    locations = np.array([[0, 0, 1], [1, 1, 20], [500.0, 500.0, 500.0]])
+    values = np.array([[0.123, 0.321, 7.0], [np.nan, 1.0, 2.0]])
+
+    coefficients = harmonics.decompose_point_data(interpolation_matrix(embryo_mesh, locations), values)
+
+    for i, row in enumerate(values):
+        interpolated = GeneData("test_gene", locations, row).interpolate(embryo_mesh)
+        expected = harmonics.decompose(interpolated)["test_gene"]
+        np.testing.assert_allclose(coefficients[i], expected, rtol=1e-8, atol=1e-12)

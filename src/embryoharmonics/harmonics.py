@@ -1,8 +1,10 @@
 import logging
 from typing import Iterable
 
+import numpy as np
 from numpy.typing import ArrayLike
 import pyvista as pv
+import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
 from embryoharmonics.fem import FemMatrices
@@ -130,6 +132,31 @@ class Harmonics:
             harmonic_coefficients[data.name] = self._harmonics @ (mass @ data.data)
 
         return harmonic_coefficients
+
+
+    def decompose_point_data(
+            self,
+            interpolation: sp.spmatrix,
+            values: ArrayLike,
+    ) -> np.ndarray:
+        """Decompose point data into the harmonics without interpolating it
+        onto the mesh first.
+
+        This equals the decomposition of the L2 projection of each row of the
+        values onto the mesh (see :func:`celegans.gene_data.interpolation_matrix`),
+        but the mass matrix of the projection cancels against the one of the
+        decomposition: the coefficients are just the harmonics sampled at the
+        points, weighted by the values. NaN values are ignored.
+
+        :param interpolation: The (n_mesh_points, n_points) matrix of the finite
+            element basis functions evaluated at the points
+        :param values: The point data to decompose (n_data, n_points)
+        :return: The coefficients (n_data, n_harmonics)
+        """
+        _logger.debug('Decomposing point data of shape %s into %d harmonics',
+                      np.shape(values), len(self))
+        sampled_harmonics = self._harmonics @ interpolation
+        return np.nan_to_num(values) @ sampled_harmonics.T
 
 
     def compose(

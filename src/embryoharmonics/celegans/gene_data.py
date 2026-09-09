@@ -10,6 +10,7 @@ import numpy as np
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
+import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 import pyvista as pv
 
@@ -188,6 +189,22 @@ class GeneDataLoader:
         return GeneData(gene_name, locations, activities)
 
 
+    def load_all(self, time_step: int) -> tuple[np.ndarray, np.ndarray]:
+        """Load the cell locations (n_cells, 3) and the activities of all genes
+        and tissues at once as a (n_genes + n_tissues, n_cells) matrix, rows
+        ordered like ``gene_names + tissue_names``.
+        """
+        try:
+            t = self._time_to_index[time_step]
+        except KeyError as e:
+            raise ValueError(f"Time step {time_step} not found in the HDF5 file") from e
+
+        _logger.info("Loading all genes and tissues at time step %d from '%s'",
+                     time_step, self.h5file.filename)
+        activities = np.concatenate((self._gene_activities[t], self._tissues[:]))
+        return self._locations[t] * LOCATION_SCALE, activities
+
+
     def load_tissue(
             self,
             tissue_name: str,
@@ -347,6 +364,15 @@ class ParquetGeneDataLoader:
         return GeneData(gene_name, locations, activities)
 
 
+    def load_all(self, time_step: int) -> tuple[np.ndarray, np.ndarray]:
+        """Load the cell locations (n_cells, 3) and the activities of all genes
+        at once as a (n_genes, n_cells) matrix, rows ordered like ``gene_names``;
+        see :meth:`GeneDataLoader.load_all`.
+        """
+        self._load_time_step(time_step)
+        return self._cached_locations, self._cached_activities[list(self._gene_to_index.values())]
+
+
     def load_tissue(self, tissue_name: str, time_step: int) -> GeneData:
         raise ValueError(f"No tissue data in parquet gene data '{self.directory}'")
 
@@ -391,32 +417,43 @@ def _interpolate(
     :param values: The values of the data points (n,).
     :return: The interpolated data.
     """
+    # Compute L2-orthogonal projection of the pointwise data onto the mesh; the
+    # LU decomposition of the mass matrix is cached across calls
+    mass_lu = _compute_lu(HashableWrapper(mesh, [mesh.points, mesh.cells]))
+    rhs = interpolation_matrix(mesh, locations) @ np.nan_to_num(values)
+    return mass_lu.solve(rhs)
+
+
+def interpolation_matrix(
+        mesh: pv.UnstructuredGrid,
+        locations: np.ndarray
+) -> sp.csr_matrix:
+    """Evaluate the lowest-order finite element basis functions of the mesh at
+    the given locations. Its product with point values is the right-hand side
+    of the L2 projection onto the mesh; its product with harmonics samples them
+    at the locations.
+
+    :param mesh: The mesh whose basis functions to evaluate.
+    :param locations: The locations to evaluate at (n, 3).
+    :return: A sparse (mesh.n_points, n) matrix; columns of locations outside
+        the mesh are zero.
+    """
     # Make locations, points, and cells hashable
     # This is some effort, but still a lot less than the cost of recomputing the
-    # LU decomposition and the mesh query for each interpolation
+    # mesh query for each interpolation
     mesh_wrapper = HashableWrapper(mesh, [mesh.points, mesh.cells])
     locations_wrapper = HashableWrapper(locations, [locations])
-
-    # Compute the LU decomposition of the mass matrix for orthogonal projection
-    # Find containing cells, skip points outside the mesh
-    mass_lu = _compute_lu(mesh_wrapper)
     barycentric, cell_indices = _compute_barycentric_coordinates(mesh_wrapper, locations_wrapper)
 
-    is_outside = np.any(np.isnan(barycentric), axis=1)
-    is_nan = np.isnan(values)
-    _logger.debug("Interpolating %d points, skipping %d points outside the mesh and %d NaN values",
-                    len(locations), np.sum(is_outside), np.sum(is_nan))
+    inside = np.flatnonzero(~np.any(np.isnan(barycentric), axis=1))
+    _logger.debug("Interpolating %d points, skipping %d points outside the mesh",
+                  len(locations), len(locations) - len(inside))
 
-    skip = is_outside | is_nan
-    values = values[~skip]
-    barycentric = barycentric[~skip]
-    cells = mesh.cell_connectivity.reshape(-1, 4)[cell_indices[~skip]]
-
-    rhs = np.zeros(mesh.n_points)
-    np.add.at(rhs, cells.ravel(), (values[:, None] * barycentric).ravel())
-
-    # Compute L2-orthogonal projection of the pointwise data onto the mesh
-    return mass_lu.solve(rhs)
+    cells = mesh.cell_connectivity.reshape(-1, 4)[cell_indices[inside]]
+    return sp.csr_matrix(
+        (barycentric[inside].ravel(), (cells.ravel(), np.repeat(inside, 4))),
+        shape=(mesh.n_points, len(locations))
+    )
 
 
 class HashableWrapper:
