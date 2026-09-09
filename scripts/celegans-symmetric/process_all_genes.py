@@ -14,8 +14,8 @@ from embryoharmonics.celegans import load_axisymmetric_harmonics
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Compute axisymmetric harmonic coefficients for all genes "
-        "and tissues. The 3D basis is reconstructed per time step by revolving "
-        "the stored meridian mesh."
+        "and tissues. The modes are evaluated at the cell positions directly "
+        "from the stored meridian fields."
     )
     parser.add_argument("gene_path", help="Path to the gene data: an HDF5 file or a directory of parquet files")
     parser.add_argument(
@@ -28,12 +28,6 @@ def parse_args():
         default="harmonic_coefficients.h5",
         help="Name of the output HDF5 file, written next to result_path "
         "(default: %(default)s)",
-    )
-    parser.add_argument(
-        "--mesh-size",
-        type=float,
-        default=5,
-        help="Mesh size used to generate the revolved 3D mesh (default: %(default)s)",
     )
     parser.add_argument(
         "--time-offset",
@@ -77,7 +71,6 @@ def write_data(
     result_path,
     time_steps,
     n_harmonics,
-    mesh_size,
     time_offset,
     logger,
 ):
@@ -94,11 +87,9 @@ def write_data(
     )
 
     for i, t in enumerate(tqdm(time_steps)):
-        # Load the current time step and reconstruct the 3D basis
+        # Load the current time step and compute coefficients for all genes and tissues
         logger.info("Processing time step %d", t)
-        axisymmetric = load_axisymmetric_harmonics(result_path, t - time_offset)
-        harmonics = axisymmetric.to_full_3d(mesh_size=mesh_size)
-        mesh = harmonics.mesh
+        harmonics = load_axisymmetric_harmonics(result_path, t - time_offset)
 
         # The keep-pairs truncation rule can yield n or n + 1 modes per step
         m = min(n_harmonics, len(harmonics))
@@ -110,9 +101,7 @@ def write_data(
 
         # Decompose all genes and tissues at once, skipping the interpolation
         locations, activities = gdl.load_all(t)
-        coefficients = harmonics.decompose_point_data(
-            celegans.interpolation_matrix(mesh, locations), activities
-        )
+        coefficients = harmonics.decompose_point_data(locations, activities)
         gene_coeff[i, :, :m] = coefficients[:gdl.n_genes, :m]
         tissue_coeff[i, :, :m] = coefficients[gdl.n_genes:, :m]
 
@@ -173,7 +162,6 @@ def main():
             args.result_path,
             time_steps,
             n_harmonics,
-            args.mesh_size,
             args.time_offset,
             logger,
         )

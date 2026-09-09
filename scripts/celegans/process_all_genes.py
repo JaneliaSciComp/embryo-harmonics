@@ -79,13 +79,10 @@ def write_data(
         # Load the current time step and compute coefficients for all genes and tissues
         logger.info("Processing time step %d", t)
         harmonics = io.load_harmonics(result_path, t - time_offset)
-        mesh = harmonics.mesh
 
         # Decompose all genes and tissues at once, skipping the interpolation
         locations, activities = gdl.load_all(t)
-        coefficients = harmonics.decompose_point_data(
-            celegans.interpolation_matrix(mesh, locations), activities
-        )
+        coefficients = harmonics.decompose_point_data(locations, activities)
         gene_coeff[i] = coefficients[:gdl.n_genes]
         tissue_coeff[i] = coefficients[gdl.n_genes:]
 
