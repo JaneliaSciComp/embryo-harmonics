@@ -322,9 +322,10 @@ class ParquetGeneDataLoader:
         locations = np.stack([xyz[c].to_numpy() for c in ("LR", "DV", "AP")], axis=1) * LOCATION_SCALE
 
         cpm = self._cpm.to_table(filter=pc.field("TI") == time_step)
-        row_of_xyz_id = np.full(xyz_ids.max() + 1, -1)
-        row_of_xyz_id[xyz_ids] = np.arange(len(xyz_ids))
         xyz_id = self._cpm_to_xyz_lineage[cpm["iLI"].to_numpy()]
+        # Lineages with expression may have no position at this time step
+        row_of_xyz_id = np.full(max(xyz_ids.max(), xyz_id.max()) + 1, -1)
+        row_of_xyz_id[xyz_ids] = np.arange(len(xyz_ids))
         rows = np.where(xyz_id >= 0, row_of_xyz_id[np.clip(xyz_id, 0, None)], -1)
         valid = rows >= 0
         if not valid.all():
