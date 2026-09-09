@@ -181,3 +181,25 @@ def test_revolve_meridian_recovers_cylinder_volume(cylinder_meridian):
     # netgen tet ordering yields negative VTK-signed volumes (as in the
     # existing 3D pipeline); the FEM assembly fixes orientation per element
     assert abs(mesh.volume) == pytest.approx(expected, rel=2e-2)
+
+
+def test_point_data_decomposition_matches_3d_reconstruction(symmetric_worm):
+    """Decomposing point data directly from the meridian fields must agree
+    with decomposing it via the reconstructed 3D basis up to discretization
+    error. Degenerate pairs are compared by their joint coefficient norm,
+    since the 3D reconstruction may rotate them.
+    """
+    _, mesh_3d, meridian = symmetric_worm
+    axi = AxisymmetricHarmonics.compute(meridian, n=8)
+    rng = np.random.default_rng(0)
+    locations = mesh_3d.cell_centers().points[rng.choice(mesh_3d.n_cells, 50, replace=False)]
+    values = rng.random((3, len(locations)))
+
+    direct = axi.decompose_point_data(locations, values)
+    via_3d = axi.to_full_3d(mesh_3d).decompose_point_data(locations, values)
+
+    assert direct.shape == via_3d.shape
+    for cluster in axi.degenerate_clusters():
+        a = np.linalg.norm(direct[:, cluster], axis=1)
+        b = np.linalg.norm(via_3d[:, cluster], axis=1)
+        assert np.allclose(a, b, rtol=5e-2, atol=1e-3 * np.abs(via_3d).max())

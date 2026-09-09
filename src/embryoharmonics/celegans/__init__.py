@@ -9,13 +9,7 @@ from .axisymmetric import (
 from .embryo_model import EmbryoModel, axial_profile, transform_mesh
 from .webster_horn_harmonics import compute_webster_horn_meridian_harmonics
 from .model_loader import EmbryoModelLoader
-from .gene_data import (
-    GeneData,
-    GeneDataLoader,
-    ParquetGeneDataLoader,
-    interpolation_matrix,
-    open_gene_data_loader,
-)
+from .gene_data import GeneData, GeneDataLoader, ParquetGeneDataLoader, open_gene_data_loader
 
 __all__ = [
     "EmbryoModel",
@@ -24,7 +18,6 @@ __all__ = [
     "GeneDataLoader",
     "ParquetGeneDataLoader",
     "open_gene_data_loader",
-    "interpolation_matrix",
     "transform_mesh",
     "axial_profile",
     "AxisymmetricHarmonics",

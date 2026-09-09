@@ -4,10 +4,10 @@ from typing import Iterable
 import numpy as np
 from numpy.typing import ArrayLike
 import pyvista as pv
-import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
 from embryoharmonics.fem import FemMatrices
+from embryoharmonics.interpolation import interpolation_matrix
 from embryoharmonics.mesh_data import MeshData
 
 
@@ -134,29 +134,36 @@ class Harmonics:
         return harmonic_coefficients
 
 
+    def sample(self, locations: ArrayLike) -> np.ndarray:
+        """Evaluate the harmonics at the given points.
+
+        :param locations: The points to evaluate at (n_points, 3)
+        :return: The values (n_harmonics, n_points); zero outside the mesh
+        """
+        return self._harmonics @ interpolation_matrix(self._mesh, np.asarray(locations))
+
+
     def decompose_point_data(
             self,
-            interpolation: sp.spmatrix,
+            locations: ArrayLike,
             values: ArrayLike,
     ) -> np.ndarray:
         """Decompose point data into the harmonics without interpolating it
         onto the mesh first.
 
         This equals the decomposition of the L2 projection of each row of the
-        values onto the mesh (see :func:`celegans.gene_data.interpolation_matrix`),
-        but the mass matrix of the projection cancels against the one of the
-        decomposition: the coefficients are just the harmonics sampled at the
-        points, weighted by the values. NaN values are ignored.
+        values onto the mesh, but the mass matrix of the projection cancels
+        against the one of the decomposition: the coefficients are just the
+        harmonics sampled at the points, weighted by the values. NaN values
+        and points outside the mesh are ignored.
 
-        :param interpolation: The (n_mesh_points, n_points) matrix of the finite
-            element basis functions evaluated at the points
+        :param locations: The points the data is given at (n_points, 3)
         :param values: The point data to decompose (n_data, n_points)
         :return: The coefficients (n_data, n_harmonics)
         """
         _logger.debug('Decomposing point data of shape %s into %d harmonics',
                       np.shape(values), len(self))
-        sampled_harmonics = self._harmonics @ interpolation
-        return np.nan_to_num(values) @ sampled_harmonics.T
+        return np.nan_to_num(values) @ self.sample(locations).T
 
 
     def compose(

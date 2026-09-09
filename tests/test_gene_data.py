@@ -9,7 +9,6 @@ from embryoharmonics.celegans import (
     GeneData,
     GeneDataLoader,
     ParquetGeneDataLoader,
-    interpolation_matrix,
     open_gene_data_loader,
 )
 
@@ -186,7 +185,7 @@ def test_point_data_decomposition_matches_interpolation(embryo_mesh):
     locations = np.array([[0, 0, 1], [1, 1, 20], [500.0, 500.0, 500.0]])
     values = np.array([[0.123, 0.321, 7.0], [np.nan, 1.0, 2.0]])
 
-    coefficients = harmonics.decompose_point_data(interpolation_matrix(embryo_mesh, locations), values)
+    coefficients = harmonics.decompose_point_data(locations, values)
 
     for i, row in enumerate(values):
         interpolated = GeneData("test_gene", locations, row).interpolate(embryo_mesh)
