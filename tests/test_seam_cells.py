@@ -47,7 +47,7 @@ def test_model_interpolates_seam_cells(parquet_dir):
     radius = np.linalg.norm(model.transverse_splines[0](t) - model.central_spline(t), axis=1)
     np.testing.assert_allclose(t[1:], np.linspace(30, 160, 10) * LOCATION_SCALE)
     np.testing.assert_allclose(radius[1:], np.linspace(6, 2, 10) * LOCATION_SCALE)
-    assert t[0] == 0 and radius[0] == radius[-1]
+    assert t[0] == 0 and np.isclose(radius[0], radius[-1])
 
 
 def test_model_generates_meridian_mesh(parquet_dir):

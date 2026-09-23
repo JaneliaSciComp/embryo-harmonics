@@ -122,7 +122,7 @@ def test_parquet_format_not_finalized():
 
 def test_parquet_gene_data_loader():
     """Test that the parquet loader joins expression onto cell positions by lineage name."""
-    gdl = open_gene_data_loader("tests/resources/celegans_genedata_parquet")
+    gdl = open_gene_data_loader("tests/resources/celegans_genedata_parquet", location_scale=5.0)
     assert isinstance(gdl, ParquetGeneDataLoader)
     assert gdl.gene_names == ["cwn-1", "pal-1", "hlh-1"]
     assert gdl.tissue_names == [] and gdl.n_tissues == 0
@@ -170,7 +170,7 @@ def test_load_all_matches_single_loads(gene_data_loader):
     np.testing.assert_array_equal(activities[1], gene.activities)
     np.testing.assert_array_equal(activities[gene_data_loader.n_genes], tissue.activities)
 
-    parquet_loader = open_gene_data_loader("tests/resources/celegans_genedata_parquet")
+    parquet_loader = open_gene_data_loader("tests/resources/celegans_genedata_parquet", location_scale=5.0)
     locations, activities = parquet_loader.load_all(100)
     np.testing.assert_array_equal(locations[:, 2], [25.0, 30.0, 35.0, 40.0])
     np.testing.assert_array_equal(activities[0], [np.nan, 30.0, 10.0, np.nan])

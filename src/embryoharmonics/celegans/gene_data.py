@@ -19,10 +19,8 @@ from embryoharmonics.mesh_data import MeshData
 _logger = logging.getLogger(__name__)
 
 # Gene data positions are in microns, the geometry in voxels of 0.1625 microns.
-# The exact factor 1/0.1625 leaves many cells outside the geometry, since the
-# gene data are smoothed in time and the geometries are not; 5 keeps almost all
-# cells inside until that is resolved.
-LOCATION_SCALE = 5.0
+VOXEL_SIZE_UM = 0.1625
+LOCATION_SCALE = 1 / VOXEL_SIZE_UM
 
 
 @dataclass
@@ -66,11 +64,13 @@ class GeneData:
 class GeneDataLoader:
     """Loader for gene expression data from an HDF5 file.
     """
-    def __init__(self, path: str):
+    def __init__(self, path: str, location_scale: float = LOCATION_SCALE):
         """Initialize the gene data loader.
 
         :param path: The path to the HDF5 file containing the gene expression data.
+        :param location_scale: Factor from the stored positions (microns) to the geometry units.
         """
+        self.location_scale = location_scale
         self.h5file = h5py.File(path, "r")
 
         # Load all gene names
@@ -176,7 +176,7 @@ class GeneDataLoader:
         except KeyError as e:
             raise ValueError(f"Gene {gene_name} not found in the HDF5 file") from e
 
-        locations = self._locations[t, :, :] * LOCATION_SCALE
+        locations = self._locations[t, :, :] * self.location_scale
         activities = self._gene_activities[t, g, :]
 
         if remove_nans:
@@ -200,7 +200,7 @@ class GeneDataLoader:
         _logger.info("Loading all genes and tissues at time step %d from '%s'",
                      time_step, self.h5file.filename)
         activities = np.concatenate((self._gene_activities[t], self._tissues[:]))
-        return self._locations[t] * LOCATION_SCALE, activities
+        return self._locations[t] * self.location_scale, activities
 
 
     def load_tissue(
@@ -227,7 +227,7 @@ class GeneDataLoader:
 
         _logger.info("Loading tissue %s at time step %d from '%s'",
                      tissue_name, time_step, self.h5file.filename)
-        return GeneData(tissue_name, self._locations[t, :, :] * LOCATION_SCALE,
+        return GeneData(tissue_name, self._locations[t, :, :] * self.location_scale,
                         self._tissues[tissue_index, :])
 
 
@@ -238,11 +238,13 @@ class ParquetGeneDataLoader:
     point) are joined onto the cell positions by lineage name. The format has
     no tissue data, so ``tissue_names`` is empty.
     """
-    def __init__(self, directory: str):
+    def __init__(self, directory: str, location_scale: float = LOCATION_SCALE):
         """Initialize the gene data loader.
 
         :param directory: The directory containing the parquet files.
+        :param location_scale: Factor from the stored positions (microns) to the geometry units.
         """
+        self.location_scale = location_scale
         self.directory = directory
         path = functools.partial(os.path.join, directory)
 
@@ -317,7 +319,7 @@ class ParquetGeneDataLoader:
         _logger.info("Reading time step %d from '%s'", time_step, self.directory)
         xyz = self._xyz.filter(pc.field("TI") == time_step)
         xyz_ids = xyz["iLI"].to_numpy()
-        locations = np.stack([xyz[c].to_numpy() for c in ("LR", "DV", "AP")], axis=1) * LOCATION_SCALE
+        locations = np.stack([xyz[c].to_numpy() for c in ("LR", "DV", "AP")], axis=1) * self.location_scale
 
         cpm = self._cpm.to_table(filter=pc.field("TI") == time_step)
         xyz_id = self._cpm_to_xyz_lineage[cpm["iLI"].to_numpy()]
@@ -376,11 +378,14 @@ class ParquetGeneDataLoader:
         raise ValueError(f"No tissue data in parquet gene data '{self.directory}'")
 
 
-def open_gene_data_loader(path: str) -> GeneDataLoader | ParquetGeneDataLoader:
+def open_gene_data_loader(
+    path: str, location_scale: float = LOCATION_SCALE
+) -> GeneDataLoader | ParquetGeneDataLoader:
     """Open gene expression data in either format: a directory of parquet
     files or a single HDF5 file.
     """
-    return ParquetGeneDataLoader(path) if os.path.isdir(path) else GeneDataLoader(path)
+    loader = ParquetGeneDataLoader if os.path.isdir(path) else GeneDataLoader
+    return loader(path, location_scale)
 
 
 def _convert_raw_names(raw_names):

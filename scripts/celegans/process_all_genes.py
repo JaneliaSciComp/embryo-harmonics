@@ -32,6 +32,13 @@ def parse_args():
         "t - offset, e.g. 419 for models numbered from 1 and gene data in minutes "
         "from 420 (default: %(default)s)",
     )
+    parser.add_argument(
+        "--buffer",
+        type=float,
+        default=0.0,
+        help="Scale the cell positions up by this percentage so that they fit "
+        "into a slightly too small geometry (default: %(default)s)",
+    )
     return parser.parse_args()
 
 
@@ -109,7 +116,9 @@ def main():
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-    gene_data_loader = celegans.open_gene_data_loader(args.gene_path)
+    gene_data_loader = celegans.open_gene_data_loader(
+        args.gene_path, location_scale=(1 + args.buffer / 100) / celegans.gene_data.VOXEL_SIZE_UM
+    )
 
     # Discover time points with meshes and harmonics
     result_times = io.time_points(args.result_path)
