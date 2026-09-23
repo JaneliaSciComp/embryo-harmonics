@@ -29,11 +29,12 @@ class EmbryoModel:
             central_coordinates,
             transverse_coordinates,
             *,
-            symmetric: bool = False
+            symmetric: bool = False,
+            bc_type: str = "not-a-knot",
     ):
         self.seam_cells = {name: index for index, name in enumerate(seam_cells)}
         self.spline_domain = spline_domain
-        self.central_spline = CubicSpline(spline_domain, central_coordinates)
+        self.central_spline = CubicSpline(spline_domain, central_coordinates, bc_type=bc_type)
 
         if symmetric:
             transverse_coordinates = _replicate_and_rotate(
@@ -41,7 +42,7 @@ class EmbryoModel:
             )
 
         self.transverse_splines = [
-            CubicSpline(spline_domain, coordinates)
+            CubicSpline(spline_domain, coordinates, bc_type=bc_type)
             for coordinates in transverse_coordinates
         ]
 

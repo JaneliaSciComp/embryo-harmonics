@@ -15,7 +15,11 @@ def parse_args():
         description="Generate meridian meshes and axisymmetric harmonics for "
         "all (rotationally symmetrized) C. elegans embryo model time steps."
     )
-    parser.add_argument("path", help="Path to celegans_models.h5")
+    parser.add_argument(
+        "path",
+        help="Path to celegans_models.h5, or to a directory of parquet gene "
+        "data whose seam cell positions define the outline",
+    )
     parser.add_argument(
         "--output-file",
         default=os.path.join(os.getcwd(), "results", "symmetric_embryo_harmonics.h5"),
@@ -87,7 +91,10 @@ def main():
     logger.addHandler(handler)
 
     # Load the embryo model and process each time step
-    embryo_model_loader = celegans.EmbryoModelLoader(args.path)
+    if os.path.isdir(args.path):
+        embryo_model_loader = celegans.SeamCellModelLoader(args.path)
+    else:
+        embryo_model_loader = celegans.EmbryoModelLoader(args.path)
     output_file = os.path.normpath(args.output_file)
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
