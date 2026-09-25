@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument(
         "--output-file",
         default="harmonic_coefficients.h5",
-        help="Name of the output HDF5 file, written next to result_path "
+        help="Output HDF5 file; a bare file name is written next to result_path "
         "(default: %(default)s)",
     )
     parser.add_argument(
@@ -29,15 +29,18 @@ def parse_args():
         type=int,
         default=0,
         help="Gene data at time step t is matched to the results at time step "
-        "t - offset, e.g. 419 for models numbered from 1 and gene data in minutes "
-        "from 420 (default: %(default)s)",
+        "t - offset, e.g. 380 for models numbered from 1 and gene data in minutes "
+        "from 381 (default: %(default)s)",
     )
     parser.add_argument(
         "--buffer",
         type=float,
-        default=0.0,
+        nargs="+",
+        default=[0.0],
+        metavar="PERCENT",
         help="Scale the cell positions up by this percentage so that they fit "
-        "into a slightly too small geometry (default: %(default)s)",
+        "into a slightly too small geometry: one value for all directions or "
+        "two values for the radial (x, y) and axial (z) direction (default: %(default)s)",
     )
     return parser.parse_args()
 
@@ -117,7 +120,7 @@ def main():
     logger.addHandler(handler)
 
     gene_data_loader = celegans.open_gene_data_loader(
-        args.gene_path, location_scale=(1 + args.buffer / 100) / celegans.gene_data.VOXEL_SIZE_UM
+        args.gene_path, location_scale=celegans.gene_data.buffered_location_scale(args.buffer)
     )
 
     # Discover time points with meshes and harmonics
@@ -140,7 +143,9 @@ def main():
     )
 
     # Execute and write everything
-    target_file_name = os.path.join(os.path.dirname(args.result_path), args.output_file)
+    target_file_name = args.output_file
+    if not os.path.dirname(target_file_name):
+        target_file_name = os.path.join(os.path.dirname(args.result_path), target_file_name)
     with h5py.File(target_file_name, "w") as target_file:
         logger.info("Write data to %s", target_file_name)
         write_meta_data(target_file, gene_data_loader, time_steps, n_harmonics)

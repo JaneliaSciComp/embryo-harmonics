@@ -23,6 +23,17 @@ VOXEL_SIZE_UM = 0.1625
 LOCATION_SCALE = 1 / VOXEL_SIZE_UM
 
 
+def buffered_location_scale(buffer: list[float]) -> np.ndarray:
+    """Per-axis (x, y, z) scale from microns to voxels, expanded by a buffer in
+    percent: either one value for all directions or two values for the radial
+    (x, y) and axial (z) direction.
+    """
+    if len(buffer) not in (1, 2):
+        raise ValueError(f"Buffer must be one or two values, got {buffer}")
+    radial, axial = buffer if len(buffer) == 2 else buffer * 2
+    return (1 + np.array([radial, radial, axial]) / 100) / VOXEL_SIZE_UM
+
+
 @dataclass
 class GeneData:
     """Expression data for a gene at a single point in time.
@@ -64,11 +75,11 @@ class GeneData:
 class GeneDataLoader:
     """Loader for gene expression data from an HDF5 file.
     """
-    def __init__(self, path: str, location_scale: float = LOCATION_SCALE):
+    def __init__(self, path: str, location_scale: float | np.ndarray = LOCATION_SCALE):
         """Initialize the gene data loader.
 
         :param path: The path to the HDF5 file containing the gene expression data.
-        :param location_scale: Factor from the stored positions (microns) to the geometry units.
+        :param location_scale: Factor (scalar or per axis) from the stored positions (microns) to the geometry units.
         """
         self.location_scale = location_scale
         self.h5file = h5py.File(path, "r")
@@ -238,11 +249,11 @@ class ParquetGeneDataLoader:
     point) are joined onto the cell positions by lineage name. The format has
     no tissue data, so ``tissue_names`` is empty.
     """
-    def __init__(self, directory: str, location_scale: float = LOCATION_SCALE):
+    def __init__(self, directory: str, location_scale: float | np.ndarray = LOCATION_SCALE):
         """Initialize the gene data loader.
 
         :param directory: The directory containing the parquet files.
-        :param location_scale: Factor from the stored positions (microns) to the geometry units.
+        :param location_scale: Factor (scalar or per axis) from the stored positions (microns) to the geometry units.
         """
         self.location_scale = location_scale
         self.directory = directory
@@ -379,7 +390,7 @@ class ParquetGeneDataLoader:
 
 
 def open_gene_data_loader(
-    path: str, location_scale: float = LOCATION_SCALE
+    path: str, location_scale: float | np.ndarray = LOCATION_SCALE
 ) -> GeneDataLoader | ParquetGeneDataLoader:
     """Open gene expression data in either format: a directory of parquet
     files or a single HDF5 file.
