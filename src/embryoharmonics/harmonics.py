@@ -1,11 +1,13 @@
 import logging
 from typing import Iterable
 
+import numpy as np
 from numpy.typing import ArrayLike
 import pyvista as pv
 import scipy.sparse.linalg as spla
 
 from embryoharmonics.fem import FemMatrices
+from embryoharmonics.interpolation import interpolation_matrix
 from embryoharmonics.mesh_data import MeshData
 
 
@@ -84,7 +86,13 @@ class Harmonics:
         # Set up lowest-order finite element problem for the Laplace operator
         _logger.info("Computing the first %d harmonics on the given mesh", n)
         fem = FemMatrices.compute_for(mesh)
-        eigvals, eigvecs = spla.eigsh(A=fem.stiffness, M=fem.mass, k=n, which='LM', sigma=0.0)
+        # The Neumann stiffness is singular (constant mode), which can make the
+        # shift-invert factorization at sigma = 0 fail; use a small negative
+        # shift (relative to the mean eigenvalue scale) so stiffness - sigma *
+        # mass is definite. Any sigma below the lowest eigenvalue leaves the
+        # computed modes unchanged.
+        sigma = -1e-6 * fem.stiffness.diagonal().sum() / fem.mass.diagonal().sum()
+        eigvals, eigvecs = spla.eigsh(A=fem.stiffness, M=fem.mass, k=n, which='LM', sigma=sigma)
 
         return Harmonics(mesh, eigvecs.T, eigvals)
 
@@ -124,6 +132,38 @@ class Harmonics:
             harmonic_coefficients[data.name] = self._harmonics @ (mass @ data.data)
 
         return harmonic_coefficients
+
+
+    def sample(self, locations: ArrayLike) -> np.ndarray:
+        """Evaluate the harmonics at the given points.
+
+        :param locations: The points to evaluate at (n_points, 3)
+        :return: The values (n_harmonics, n_points); zero outside the mesh
+        """
+        return self._harmonics @ interpolation_matrix(self._mesh, np.asarray(locations))
+
+
+    def decompose_point_data(
+            self,
+            locations: ArrayLike,
+            values: ArrayLike,
+    ) -> np.ndarray:
+        """Decompose point data into the harmonics without interpolating it
+        onto the mesh first.
+
+        This equals the decomposition of the L2 projection of each row of the
+        values onto the mesh, but the mass matrix of the projection cancels
+        against the one of the decomposition: the coefficients are just the
+        harmonics sampled at the points, weighted by the values. NaN values
+        and points outside the mesh are ignored.
+
+        :param locations: The points the data is given at (n_points, 3)
+        :param values: The point data to decompose (n_data, n_points)
+        :return: The coefficients (n_data, n_harmonics)
+        """
+        _logger.debug('Decomposing point data of shape %s into %d harmonics',
+                      np.shape(values), len(self))
+        return np.nan_to_num(values) @ self.sample(locations).T
 
 
     def compose(

@@ -24,6 +24,7 @@ from embryoharmonics.celegans.embryo_model import _to_vtk
 from embryoharmonics.celegans.webster_horn_harmonics import orthonormalize_clusters
 from embryoharmonics.fem import FemMatrices, compute_mass_and_stiffness_axisymmetric
 from embryoharmonics.harmonics import Harmonics
+from embryoharmonics.interpolation import interpolation_matrix
 
 
 _AXIS_TOL = 1e-8  # nodes with r < _AXIS_TOL * max(r) are on the axis
@@ -108,8 +109,14 @@ class AxisymmetricHarmonics(Harmonics):
                     "Mesh too coarse to compute %d modes per branch; capped at %d",
                     n, n_modes
                 )
+            # The k = 0 Neumann stiffness is singular (constant mode), which
+            # can make the shift-invert factorization at sigma = 0 fail; use a
+            # small negative shift (relative to the mean eigenvalue scale) so
+            # stiffness - sigma * mass is definite. Any sigma below the lowest
+            # eigenvalue leaves the computed modes unchanged.
+            sigma = -1e-6 * stiffness.diagonal().sum() / mass.diagonal().sum()
             eigenvalues, eigenvectors = spla.eigsh(
-                A=stiffness, M=mass, k=n_modes, which='LM', sigma=0.0
+                A=stiffness, M=mass, k=n_modes, which='LM', sigma=sigma
             )
 
             fields = eigenvectors.T
@@ -201,12 +208,7 @@ class AxisymmetricHarmonics(Harmonics):
                 r[outside], z[outside]
             )
 
-        angular = np.where(
-            (self.trig_kinds == "sin")[:, None],
-            np.sin(self.angular_orders[:, None] * theta),
-            np.cos(self.angular_orders[:, None] * theta),
-        )
-        fields = values.T * angular
+        fields = values.T * self._angular_factors(theta)
 
         mass = FemMatrices.compute_for(mesh, stiffness=False).mass
         # sparse-dense matmul spuriously raises div/overflow FP warnings on some
@@ -217,6 +219,36 @@ class AxisymmetricHarmonics(Harmonics):
         orthonormalize_clusters(fields, self.degenerate_clusters(), mass)
 
         return Harmonics(mesh, fields, self.eigenvalues)
+
+
+    def sample(self, locations):
+        """Evaluate the 3D modes v(r, z) * cos/sin(k * theta) at the given
+        points, normalized with respect to the body of revolution.
+
+        :param locations: The 3D points to evaluate at (n_points, 3)
+        :return: The values (n_modes, n_points); zero outside the body
+        """
+        x, y, z = np.asarray(locations).T
+        meridian_points = np.column_stack((np.hypot(x, y), np.zeros_like(x), z))
+        values = self._harmonics @ interpolation_matrix(self.mesh, meridian_points)
+
+        # The 3D norm of v * cos/sin(k * theta) is (2 pi or pi) * int r v^2 dr dz
+        mass = compute_mass_and_stiffness_axisymmetric(self.mesh, compute_stiffness=False).mass
+        weighted_norms = np.einsum("ij,ij->i", self._harmonics, (mass @ self._harmonics.T).T)
+        norms = np.sqrt(np.where(self.angular_orders == 0, 2 * np.pi, np.pi) * weighted_norms)
+
+        return values * self._angular_factors(np.arctan2(y, x)) / norms[:, None]
+
+
+    def _angular_factors(self, theta: np.ndarray) -> np.ndarray:
+        """The angular factor cos/sin(k * theta) of each mode at the given
+        angles, as a (n_modes, n_angles) array.
+        """
+        return np.where(
+            (self.trig_kinds == "sin")[:, None],
+            np.sin(self.angular_orders[:, None] * theta),
+            np.cos(self.angular_orders[:, None] * theta),
+        )
 
 
     def nodal_counts(self, *, n_samples: int = 256, threshold: float = 0.05):

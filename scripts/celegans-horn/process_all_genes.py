@@ -13,7 +13,7 @@ from embryoharmonics.celegans import load_axisymmetric_harmonics
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Compute axisymmetric harmonic coefficients for all genes "
+        description="Compute Webster-Horn harmonic coefficients for all genes "
         "and tissues. The modes are evaluated at the cell positions directly "
         "from the stored meridian fields."
     )
@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument(
         "result_path",
         help="Path to the HDF5 file containing meridian meshes and "
-        "axisymmetric harmonics",
+        "Webster-Horn harmonics",
     )
     parser.add_argument(
         "--output-file",

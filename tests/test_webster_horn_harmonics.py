@@ -5,6 +5,7 @@ from embryoharmonics import Harmonics, correlate
 from embryoharmonics.celegans import EmbryoModelLoader
 from embryoharmonics.celegans.webster_horn_harmonics import (
     compute_webster_horn_harmonics,
+    compute_webster_horn_meridian_harmonics,
     degenerate_clusters,
     match_modes,
 )
@@ -18,6 +19,13 @@ def symmetric_mesh():
     """A rotationally symmetric embryo model and its mesh."""
     model = EmbryoModelLoader(TEST_FILE).load(420, symmetric=True)
     return model, model.generate_mesh(mesh_size=10)
+
+
+@pytest.fixture(scope="module")
+def meridian_mesh():
+    """A rotationally symmetric embryo model and its 2D meridian mesh."""
+    model = EmbryoModelLoader(TEST_FILE).load(420, symmetric=True)
+    return model, model.generate_meridian_mesh(mesh_size=10)
 
 
 def test_degenerate_clusters_groups_modes_by_label():
@@ -88,6 +96,53 @@ def test_webster_horn_degenerate_clusters_are_mass_orthonormal(symmetric_mesh):
             continue
         gram = correlate([webster[i] for i in indices], normalize=False)
         assert np.allclose(gram, np.eye(len(indices)), atol=1e-10)
+
+
+def test_meridian_horn_matches_3d_horn_spectrum(symmetric_mesh, meridian_mesh):
+    """The meridian representation selects and solves the identical 1D
+    problems as the 3D reconstruction, so eigenvalues and labels must agree
+    exactly, and the sin partner must directly follow its cos twin.
+    """
+    model, mesh_3d = symmetric_mesh
+    _, meridian = meridian_mesh
+    horn, labels = compute_webster_horn_meridian_harmonics(meridian, model, n=8)
+    webster_3d, labels_3d = compute_webster_horn_harmonics(mesh_3d, model, n=8)
+
+    assert labels == labels_3d
+    assert np.allclose(horn.eigenvalues, webster_3d.eigenvalues)
+    for cluster in horn.degenerate_clusters():
+        assert list(horn.trig_kinds[cluster]) == ["cos", "sin"][:len(cluster)]
+
+
+def test_meridian_horn_modes_vanish_on_axis_for_positive_order(meridian_mesh):
+    """The transverse profile J_m(j' * r / R) is zero at r = 0 for m > 0, so
+    the stored meridian fields must vanish on the axis.
+    """
+    model, meridian = meridian_mesh
+    horn, labels = compute_webster_horn_meridian_harmonics(meridian, model, n=12)
+    on_axis = meridian.points[:, 0] < 1e-8 * meridian.points[:, 0].max()
+
+    assert np.any(on_axis)
+    for i, (m, _, _) in enumerate(labels):
+        field = horn[i].data
+        if m > 0:
+            assert np.abs(field[on_axis]).max() < 1e-12 * np.abs(field).max()
+
+
+def test_meridian_horn_single_branch_is_cos_only_and_sorted(meridian_mesh):
+    """A fixed angular order yields exactly n modes of that order, ascending,
+    without duplicating the degenerate sin partners.
+    """
+    model, meridian = meridian_mesh
+    horn, labels = compute_webster_horn_meridian_harmonics(
+        meridian, model, n=6, angular_order=2
+    )
+
+    assert len(horn) == 6
+    assert np.all(horn.angular_orders == 2)
+    assert np.all(horn.trig_kinds == "cos")
+    assert np.all(np.diff(horn.eigenvalues) >= 0)
+    assert all(m == 2 for m, _, _ in labels)
 
 
 def test_webster_horn_truncation_keeps_degenerate_clusters_intact(symmetric_mesh):

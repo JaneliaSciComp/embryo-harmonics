@@ -179,6 +179,8 @@ def encode_matlab_strings(strings: Iterable[str]) -> np.ndarray:
     :param strings: The strings to encode.
     :return: The encoded strings as a numpy array.
     """
-    max_length = max(len(s) for s in strings)
+    strings = list(strings)
+    max_length = max((len(s) for s in strings), default=0)
     encoded = [s.ljust(max_length).encode('ascii') for s in strings]
-    return np.array([np.frombuffer(s, dtype=np.uint8) for s in encoded]).T.astype(np.uint16)
+    result = np.array([np.frombuffer(s, dtype=np.uint8) for s in encoded], dtype=np.uint16)
+    return result.reshape(len(strings), max_length).T

@@ -1,19 +1,37 @@
 import functools
-import hashlib
 import logging
+import os
 from dataclasses import dataclass
-from typing import Any
 
 import h5py
 import numpy as np
+import pyarrow.compute as pc
+import pyarrow.dataset as ds
+import pyarrow.parquet as pq
 import scipy.sparse.linalg as spla
 import pyvista as pv
 
 from embryoharmonics.fem import FemMatrices
+from embryoharmonics.interpolation import HashableWrapper, interpolation_matrix
 from embryoharmonics.mesh_data import MeshData
 
 
 _logger = logging.getLogger(__name__)
+
+# Gene data positions are in microns, the geometry in voxels of 0.1625 microns.
+VOXEL_SIZE_UM = 0.1625
+LOCATION_SCALE = 1 / VOXEL_SIZE_UM
+
+
+def buffered_location_scale(buffer: list[float]) -> np.ndarray:
+    """Per-axis (x, y, z) scale from microns to voxels, expanded by a buffer in
+    percent: either one value for all directions or two values for the radial
+    (x, y) and axial (z) direction.
+    """
+    if len(buffer) not in (1, 2):
+        raise ValueError(f"Buffer must be one or two values, got {buffer}")
+    radial, axial = buffer if len(buffer) == 2 else buffer * 2
+    return (1 + np.array([radial, radial, axial]) / 100) / VOXEL_SIZE_UM
 
 
 @dataclass
@@ -57,11 +75,13 @@ class GeneData:
 class GeneDataLoader:
     """Loader for gene expression data from an HDF5 file.
     """
-    def __init__(self, path: str):
+    def __init__(self, path: str, location_scale: float | np.ndarray = LOCATION_SCALE):
         """Initialize the gene data loader.
 
         :param path: The path to the HDF5 file containing the gene expression data.
+        :param location_scale: Factor (scalar or per axis) from the stored positions (microns) to the geometry units.
         """
+        self.location_scale = location_scale
         self.h5file = h5py.File(path, "r")
 
         # Load all gene names
@@ -167,7 +187,7 @@ class GeneDataLoader:
         except KeyError as e:
             raise ValueError(f"Gene {gene_name} not found in the HDF5 file") from e
 
-        locations = self._locations[t, :, :]
+        locations = self._locations[t, :, :] * self.location_scale
         activities = self._gene_activities[t, g, :]
 
         if remove_nans:
@@ -176,6 +196,22 @@ class GeneDataLoader:
             locations, activities = _filter_nan_values(activities, locations)
 
         return GeneData(gene_name, locations, activities)
+
+
+    def load_all(self, time_step: int) -> tuple[np.ndarray, np.ndarray]:
+        """Load the cell locations (n_cells, 3) and the activities of all genes
+        and tissues at once as a (n_genes + n_tissues, n_cells) matrix, rows
+        ordered like ``gene_names + tissue_names``.
+        """
+        try:
+            t = self._time_to_index[time_step]
+        except KeyError as e:
+            raise ValueError(f"Time step {time_step} not found in the HDF5 file") from e
+
+        _logger.info("Loading all genes and tissues at time step %d from '%s'",
+                     time_step, self.h5file.filename)
+        activities = np.concatenate((self._gene_activities[t], self._tissues[:]))
+        return self._locations[t] * self.location_scale, activities
 
 
     def load_tissue(
@@ -202,7 +238,165 @@ class GeneDataLoader:
 
         _logger.info("Loading tissue %s at time step %d from '%s'",
                      tissue_name, time_step, self.h5file.filename)
-        return GeneData(tissue_name, self._locations[t, :, :], self._tissues[tissue_index, :])
+        return GeneData(tissue_name, self._locations[t, :, :] * self.location_scale,
+                        self._tissues[tissue_index, :])
+
+
+class ParquetGeneDataLoader:
+    """Loader for gene expression data from a directory of parquet files
+    (``genes.parquet``, ``lineages.parquet``, ``cpm.parquet``, ``xyz.parquet``,
+    ``xyz-lineages.parquet``). Expression values (keyed by lineage and time
+    point) are joined onto the cell positions by lineage name. The format has
+    no tissue data, so ``tissue_names`` is empty.
+    """
+    def __init__(self, directory: str, location_scale: float | np.ndarray = LOCATION_SCALE):
+        """Initialize the gene data loader.
+
+        :param directory: The directory containing the parquet files.
+        :param location_scale: Factor (scalar or per axis) from the stored positions (microns) to the geometry units.
+        """
+        self.location_scale = location_scale
+        self.directory = directory
+        path = functools.partial(os.path.join, directory)
+
+        genes = pq.read_table(path("genes.parquet")).to_pydict()
+        self._gene_to_index = dict(zip(genes["GE"], genes["i"]))
+
+        # Expression and position tables use different lineage ID lists; build
+        # a lookup from expression lineage ID to position lineage ID by name
+        cpm_lineages = pq.read_table(path("lineages.parquet")).to_pydict()
+        xyz_lineages = pq.read_table(path("xyz-lineages.parquet")).to_pydict()
+        xyz_name_to_index = dict(zip(xyz_lineages["LI"], xyz_lineages["i"]))
+        self._cpm_to_xyz_lineage = np.full(max(cpm_lineages["i"]) + 1, -1)
+        for i, name in zip(cpm_lineages["i"], cpm_lineages["LI"]):
+            self._cpm_to_xyz_lineage[i] = xyz_name_to_index.get(name, -1)
+
+        self._xyz = pq.read_table(path("xyz.parquet"))
+        self._cpm = ds.dataset(path("cpm.parquet"))
+
+        # Time steps need both expression and position data
+        cpm_times = set()
+        for batch in self._cpm.scanner(columns=["TI"]).to_batches():
+            cpm_times.update(np.unique(batch["TI"].to_numpy()).tolist())
+        xyz_times = set(pc.unique(self._xyz["TI"]).to_pylist())
+        self._time_steps = sorted(int(t) for t in cpm_times & xyz_times)
+
+        # Expression matrix and locations of the most recently loaded time step
+        self._cached_time_step = None
+        self._cached_locations = None
+        self._cached_activities = None
+
+
+    @property
+    def gene_names(self) -> list[str]:
+        return list(self._gene_to_index.keys())
+
+
+    @property
+    def tissue_names(self) -> list[str]:
+        return []
+
+
+    @property
+    def time_steps(self) -> list[int]:
+        return list(self._time_steps)
+
+
+    @property
+    def n_genes(self) -> int:
+        return len(self._gene_to_index)
+
+
+    @property
+    def n_tissues(self) -> int:
+        return 0
+
+
+    @property
+    def n_time_steps(self) -> int:
+        return len(self._time_steps)
+
+
+    def _load_time_step(self, time_step: int) -> None:
+        """Read all expression values and positions of a time step and arrange
+        them like the HDF5 layout: a (gene, cell) matrix plus (cell, 3) locations.
+        """
+        if self._cached_time_step == time_step:
+            return
+
+        if time_step not in self._time_steps:
+            raise ValueError(f"Time step {time_step} not found in '{self.directory}'")
+
+        _logger.info("Reading time step %d from '%s'", time_step, self.directory)
+        xyz = self._xyz.filter(pc.field("TI") == time_step)
+        xyz_ids = xyz["iLI"].to_numpy()
+        locations = np.stack([xyz[c].to_numpy() for c in ("LR", "DV", "AP")], axis=1) * self.location_scale
+
+        cpm = self._cpm.to_table(filter=pc.field("TI") == time_step)
+        xyz_id = self._cpm_to_xyz_lineage[cpm["iLI"].to_numpy()]
+        # Lineages with expression may have no position at this time step
+        row_of_xyz_id = np.full(max(xyz_ids.max(), xyz_id.max()) + 1, -1)
+        row_of_xyz_id[xyz_ids] = np.arange(len(xyz_ids))
+        rows = np.where(xyz_id >= 0, row_of_xyz_id[np.clip(xyz_id, 0, None)], -1)
+        valid = rows >= 0
+        if not valid.all():
+            _logger.warning("Dropping %d expression values without cell position at time step %d",
+                            (~valid).sum(), time_step)
+
+        activities = np.full((max(self._gene_to_index.values()) + 1, len(xyz_ids)), np.nan,
+                             dtype=np.float32)
+        activities[cpm["iGE"].to_numpy()[valid], rows[valid]] = cpm["CPM_mean"].to_numpy()[valid]
+
+        self._cached_time_step = time_step
+        self._cached_locations = locations
+        self._cached_activities = activities
+
+
+    def load(
+            self,
+            gene_name: str,
+            time_step: int,
+            remove_nans: bool = True
+    ) -> GeneData:
+        """Load the gene expression data for the given gene; see
+        :meth:`GeneDataLoader.load`. Cells without expression data get NaN.
+        """
+        try:
+            g = self._gene_to_index[gene_name]
+        except KeyError as e:
+            raise ValueError(f"Gene {gene_name} not found in '{self.directory}'") from e
+
+        self._load_time_step(time_step)
+        locations = self._cached_locations
+        activities = self._cached_activities[g]
+
+        if remove_nans:
+            locations, activities = _filter_nan_values(activities, locations)
+
+        return GeneData(gene_name, locations, activities)
+
+
+    def load_all(self, time_step: int) -> tuple[np.ndarray, np.ndarray]:
+        """Load the cell locations (n_cells, 3) and the activities of all genes
+        at once as a (n_genes, n_cells) matrix, rows ordered like ``gene_names``;
+        see :meth:`GeneDataLoader.load_all`.
+        """
+        self._load_time_step(time_step)
+        return self._cached_locations, self._cached_activities[list(self._gene_to_index.values())]
+
+
+    def load_tissue(self, tissue_name: str, time_step: int) -> GeneData:
+        raise ValueError(f"No tissue data in parquet gene data '{self.directory}'")
+
+
+def open_gene_data_loader(
+    path: str, location_scale: float | np.ndarray = LOCATION_SCALE
+) -> GeneDataLoader | ParquetGeneDataLoader:
+    """Open gene expression data in either format: a directory of parquet
+    files or a single HDF5 file.
+    """
+    loader = ParquetGeneDataLoader if os.path.isdir(path) else GeneDataLoader
+    return loader(path, location_scale)
 
 
 def _convert_raw_names(raw_names):
@@ -238,58 +432,11 @@ def _interpolate(
     :param values: The values of the data points (n,).
     :return: The interpolated data.
     """
-    # Make locations, points, and cells hashable
-    # This is some effort, but still a lot less than the cost of recomputing the
-    # LU decomposition and the mesh query for each interpolation
-    mesh_wrapper = HashableWrapper(mesh, [mesh.points, mesh.cells])
-    locations_wrapper = HashableWrapper(locations, [locations])
-
-    # Compute the LU decomposition of the mass matrix for orthogonal projection
-    # Find containing cells, skip points outside the mesh
-    mass_lu = _compute_lu(mesh_wrapper)
-    barycentric, cell_indices = _compute_barycentric_coordinates(mesh_wrapper, locations_wrapper)
-
-    is_outside = np.any(np.isnan(barycentric), axis=1)
-    is_nan = np.isnan(values)
-    _logger.debug("Interpolating %d points, skipping %d points outside the mesh and %d NaN values",
-                    len(locations), np.sum(is_outside), np.sum(is_nan))
-
-    skip = is_outside | is_nan
-    values = values[~skip]
-    barycentric = barycentric[~skip]
-    cells = mesh.cell_connectivity.reshape(-1, 4)[cell_indices[~skip]]
-
-    rhs = np.zeros(mesh.n_points)
-    np.add.at(rhs, cells.ravel(), (values[:, None] * barycentric).ravel())
-
-    # Compute L2-orthogonal projection of the pointwise data onto the mesh
+    # Compute L2-orthogonal projection of the pointwise data onto the mesh; the
+    # LU decomposition of the mass matrix is cached across calls
+    mass_lu = _compute_lu(HashableWrapper(mesh, [mesh.points, mesh.cells]))
+    rhs = interpolation_matrix(mesh, locations) @ np.nan_to_num(values)
     return mass_lu.solve(rhs)
-
-
-class HashableWrapper:
-    """A wrapper class to make various numpy arrays hashable for caching
-    purposes.
-    """
-    def __init__(self, data: Any, arrays_to_hash: list[np.ndarray]):
-        """Set up the wrapper to hash the given data.
-
-        :param data: The data to wrap.
-        :param arrays_to_hash: The arrays to compute the hash from.
-        """
-        self.data = data
-
-        hash_accumulator = hashlib.md5(np.ascontiguousarray(arrays_to_hash[0]).data)
-        for array in arrays_to_hash[1:]:
-            hash_accumulator.update(np.ascontiguousarray(array).data)
-        self.checksum = hash_accumulator.hexdigest()
-
-    def __hash__(self):
-        return hash(self.checksum)
-
-    def __eq__(self, other):
-        if isinstance(other, HashableWrapper):
-            return np.array_equal(self.checksum, other.checksum)
-        return False
 
 
 @functools.lru_cache(maxsize=5)
@@ -303,47 +450,3 @@ def _compute_lu(
     fem_matrices = FemMatrices.compute_for(mesh_wrapper.data, stiffness=False)
     _logger.debug("LU decomposition done")
     return spla.splu(fem_matrices.mass.tocsc())
-
-
-@functools.lru_cache(maxsize=50)
-def _compute_barycentric_coordinates(
-        mesh_wrapper: HashableWrapper,
-        locations_wrapper: HashableWrapper
-) -> tuple[np.ndarray, np.ndarray]:
-    """Compute the barycentric coordinates of the given locations with respect
-    to the given mesh and the indices of their containing cells. If the
-    locations are outside the mesh, the barycentric coordinates are set to NaN.
-    """
-    mesh = mesh_wrapper.data
-    locations = locations_wrapper.data
-    n_locs = locations.shape[0]
-
-    # Find containing cells, skip points outside the mesh
-    _logger.debug("Finding containing cells for %d points in mesh with %d points and %d cells",
-                    len(locations), mesh.n_points, mesh.n_cells)
-    containing_cells = mesh.find_containing_cell(locations)
-
-    is_outside: np.ndarray = containing_cells == -1
-    _logger.debug("Interpolating %d points, skipping %d points outside the mesh",
-                    len(locations), np.sum(is_outside))
-
-    locations = locations[~is_outside]
-    cell_indices = containing_cells[~is_outside]
-
-    # Get points of the cells containing the points
-    m = locations.shape[0]
-    cells = mesh.cell_connectivity.reshape(-1, 4)[cell_indices]
-    cell_points = mesh.points[cells.flatten()].reshape(-1, 4, 3)
-
-    # Compute barycentric coordinates of the points in the cells by solving
-    # a linear system of equations for each point
-    element_matrices = np.concatenate((
-        np.transpose(cell_points, (0, 2, 1)),
-        np.ones((m, 1, 4))
-    ), axis=1)
-    b = np.concatenate((locations, np.ones((m, 1))), axis=1)
-    b = b[:, :, None]
-
-    barycentric = np.full((n_locs, 4), np.nan)
-    barycentric[~is_outside] = np.linalg.solve(element_matrices, b).squeeze()
-    return barycentric, containing_cells

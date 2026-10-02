@@ -1,8 +1,16 @@
+import warnings
+
 import pytest
 
 import numpy as np
 
-from embryoharmonics.celegans import GeneData
+from embryoharmonics import Harmonics
+from embryoharmonics.celegans import (
+    GeneData,
+    GeneDataLoader,
+    ParquetGeneDataLoader,
+    open_gene_data_loader,
+)
 
 
 def test_construction_with_arbitrary_data():
@@ -100,3 +108,86 @@ def test_gene_data_loader_load_tissue(gene_data_loader):
 
     assert tissue_data.name == "muscle"
     assert len(tissue_data) == gene_data_loader.n_cells
+
+
+def test_parquet_format_not_finalized():
+    """Placeholder until the parquet gene data format is standardized and a real
+    example file exists; the parquet tests below only use a synthetic fixture.
+    """
+    warnings.warn(
+        "The parquet gene data format is not standardized yet: "
+        "ParquetGeneDataLoader is only tested against a synthetic fixture."
+    )
+
+
+def test_parquet_gene_data_loader():
+    """Test that the parquet loader joins expression onto cell positions by lineage name."""
+    gdl = open_gene_data_loader("tests/resources/celegans_genedata_parquet", location_scale=5.0)
+    assert isinstance(gdl, ParquetGeneDataLoader)
+    assert gdl.gene_names == ["cwn-1", "pal-1", "hlh-1"]
+    assert gdl.tissue_names == [] and gdl.n_tissues == 0
+    # 108 has positions but no expression, so it's not a valid time step
+    assert gdl.time_steps == [100, 104]
+
+    # cells at t=100 in xyz order: P2, EMS, ABa, ABpa; 'ABp' expression has no cell
+    gene_data = gdl.load("cwn-1", 100, remove_nans=False)
+    assert len(gene_data) == 4
+    np.testing.assert_array_equal(gene_data.locations[:, 2], [25.0, 30.0, 35.0, 40.0])
+    np.testing.assert_array_equal(gene_data.activities, [np.nan, 30.0, 10.0, np.nan])
+
+    gene_data = gdl.load("pal-1", 100)
+    np.testing.assert_array_equal(gene_data.activities, [3.0, 1.0])
+    np.testing.assert_array_equal(gene_data.locations[:, 0], [5.0, 10.0])
+
+    # loading another time step invalidates the per-time-step cache
+    gene_data = gdl.load("cwn-1", 104)
+    np.testing.assert_array_equal(gene_data.activities, [33.0, 11.0])
+
+    with pytest.raises(ValueError):
+        gdl.load("cwn-1", 108)
+    with pytest.raises(ValueError):
+        gdl.load("unknown", 100)
+    with pytest.raises(ValueError):
+        gdl.load_tissue("muscle", 100)
+
+
+def test_open_gene_data_loader_h5():
+    """Test that a single file opens as the HDF5 loader."""
+    assert isinstance(open_gene_data_loader("tests/resources/celegans_genedata.h5"), GeneDataLoader)
+
+
+def test_load_all_matches_single_loads(gene_data_loader):
+    """Test that loading all genes and tissues at once gives the same data as
+    loading them one by one.
+    """
+    t = gene_data_loader.time_steps[0]
+    locations, activities = gene_data_loader.load_all(t)
+
+    gene = gene_data_loader.load(gene_data_loader.gene_names[1], t, remove_nans=False)
+    tissue = gene_data_loader.load_tissue(gene_data_loader.tissue_names[0], t)
+    assert activities.shape == (gene_data_loader.n_genes + gene_data_loader.n_tissues, len(gene))
+    np.testing.assert_array_equal(locations, gene.locations)
+    np.testing.assert_array_equal(activities[1], gene.activities)
+    np.testing.assert_array_equal(activities[gene_data_loader.n_genes], tissue.activities)
+
+    parquet_loader = open_gene_data_loader("tests/resources/celegans_genedata_parquet", location_scale=5.0)
+    locations, activities = parquet_loader.load_all(100)
+    np.testing.assert_array_equal(locations[:, 2], [25.0, 30.0, 35.0, 40.0])
+    np.testing.assert_array_equal(activities[0], [np.nan, 30.0, 10.0, np.nan])
+    np.testing.assert_array_equal(activities[1], parquet_loader.load("pal-1", 100, remove_nans=False).activities)
+
+
+def test_point_data_decomposition_matches_interpolation(embryo_mesh):
+    """Test that decomposing point data directly equals interpolating it onto
+    the mesh and decomposing the result.
+    """
+    harmonics = Harmonics.compute(embryo_mesh, n=4)
+    locations = np.array([[0, 0, 1], [1, 1, 20], [500.0, 500.0, 500.0]])
+    values = np.array([[0.123, 0.321, 7.0], [np.nan, 1.0, 2.0]])
+
+    coefficients = harmonics.decompose_point_data(locations, values)
+
+    for i, row in enumerate(values):
+        interpolated = GeneData("test_gene", locations, row).interpolate(embryo_mesh)
+        expected = harmonics.decompose(interpolated)["test_gene"]
+        np.testing.assert_allclose(coefficients[i], expected, rtol=1e-8, atol=1e-12)

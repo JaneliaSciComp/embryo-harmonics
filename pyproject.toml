@@ -24,6 +24,7 @@ dependencies = [
   "webgui_jupyter_widgets",
   "mkl<2026 ; sys_platform == 'linux'",
   "threadpoolctl",
+  "pyarrow>=25.0.1",
 ]
 
 [dependency-groups]

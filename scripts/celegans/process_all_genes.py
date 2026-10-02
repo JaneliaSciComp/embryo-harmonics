@@ -14,15 +14,33 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Compute harmonic coefficients for all genes and tissues."
     )
-    parser.add_argument("gene_path", help="Path to celegans_genedata.h5")
+    parser.add_argument("gene_path", help="Path to the gene data: an HDF5 file or a directory of parquet files")
     parser.add_argument(
         "result_path", help="Path to the HDF5 file containing meshes and harmonics"
     )
     parser.add_argument(
         "--output-file",
         default="harmonic_coefficients.h5",
-        help="Name of the output HDF5 file, written next to result_path "
+        help="Output HDF5 file; a bare file name is written next to result_path "
         "(default: %(default)s)",
+    )
+    parser.add_argument(
+        "--time-offset",
+        type=int,
+        default=0,
+        help="Gene data at time step t is matched to the results at time step "
+        "t - offset, e.g. 380 for models numbered from 1 and gene data in minutes "
+        "from 381 (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--buffer",
+        type=float,
+        nargs="+",
+        default=[0.0],
+        metavar="PERCENT",
+        help="Scale the cell positions up by this percentage so that they fit "
+        "into a slightly too small geometry: one value for all directions or "
+        "two values for the radial (x, y) and axial (z) direction (default: %(default)s)",
     )
     return parser.parse_args()
 
@@ -52,16 +70,17 @@ def write_data(
     result_path,
     time_steps,
     n_harmonics,
+    time_offset,
     logger,
 ):
     """Write the harmonic coefficients for all genes and tissues to the given HDF5 file."""
     # Set up arrays of coefficients to be filled
     gdl = gene_data_loader
-    gene_coeff = np.zeros((gdl.n_time_steps, gdl.n_genes, n_harmonics), dtype=np.float64)
-    tissue_coeff = np.zeros((gdl.n_time_steps, gdl.n_tissues, n_harmonics), dtype=np.float64)
+    gene_coeff = np.zeros((len(time_steps), gdl.n_genes, n_harmonics), dtype=np.float64)
+    tissue_coeff = np.zeros((len(time_steps), gdl.n_tissues, n_harmonics), dtype=np.float64)
     logger.info(
         "Preallocated arrays for %d time steps, %d genes and %d tissues",
-        gdl.n_time_steps,
+        len(time_steps),
         gdl.n_genes,
         gdl.n_tissues,
     )
@@ -69,24 +88,13 @@ def write_data(
     for i, t in enumerate(tqdm(time_steps)):
         # Load the current time step and compute coefficients for all genes and tissues
         logger.info("Processing time step %d", t)
-        harmonics = io.load_harmonics(result_path, t)
-        mesh = harmonics.mesh
+        harmonics = io.load_harmonics(result_path, t - time_offset)
 
-        # Don't remove nans to optimize internal caching of location lookup
-        gene_data = [
-            gdl.load(gene, t, remove_nans=False).interpolate(mesh)
-            for gene in gdl.gene_names
-        ]
-        tissue_data = [
-            gdl.load_tissue(tissue, t).interpolate(mesh) for tissue in gdl.tissue_names
-        ]
-        eigen_coefficients = harmonics.decompose(gene_data + tissue_data)
-
-        # Sort coefficients into the preallocated arrays
-        for j, name in enumerate(gdl.gene_names):
-            gene_coeff[i, j, :] = eigen_coefficients[name]
-        for j, name in enumerate(gdl.tissue_names):
-            tissue_coeff[i, j, :] = eigen_coefficients[name]
+        # Decompose all genes and tissues at once, skipping the interpolation
+        locations, activities = gdl.load_all(t)
+        coefficients = harmonics.decompose_point_data(locations, activities)
+        gene_coeff[i] = coefficients[:gdl.n_genes]
+        tissue_coeff[i] = coefficients[gdl.n_genes:]
 
     logger.info(
         "Write %d gene and %d tissue coefficients to disk", gdl.n_genes, gdl.n_tissues
@@ -111,20 +119,22 @@ def main():
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-    gene_data_loader = celegans.GeneDataLoader(args.gene_path)
+    gene_data_loader = celegans.open_gene_data_loader(
+        args.gene_path, location_scale=celegans.gene_data.buffered_location_scale(args.buffer)
+    )
 
     # Discover time points with meshes and harmonics
     result_times = io.time_points(args.result_path)
     logger.info("Found %d time points with meshes and harmonics", len(result_times))
 
     # Find out at which time steps gene data is actually available and how many harmonics we have
-    time_steps = [t for t in result_times if t in gene_data_loader.time_steps]
+    time_steps = [t for t in gene_data_loader.time_steps if t - args.time_offset in result_times]
     if len(time_steps) == 0:
         raise ValueError(
             "No matching time steps found between result file and gene data!"
         )
 
-    first_harmonics = io.load_harmonics(args.result_path, time_steps[0])
+    first_harmonics = io.load_harmonics(args.result_path, time_steps[0] - args.time_offset)
     n_harmonics = len(first_harmonics)
     logger.info(
         "Compute coefficients for %d times steps and  %d harmonics",
@@ -133,7 +143,9 @@ def main():
     )
 
     # Execute and write everything
-    target_file_name = os.path.join(os.path.dirname(args.result_path), args.output_file)
+    target_file_name = args.output_file
+    if not os.path.dirname(target_file_name):
+        target_file_name = os.path.join(os.path.dirname(args.result_path), target_file_name)
     with h5py.File(target_file_name, "w") as target_file:
         logger.info("Write data to %s", target_file_name)
         write_meta_data(target_file, gene_data_loader, time_steps, n_harmonics)
@@ -143,6 +155,7 @@ def main():
             args.result_path,
             time_steps,
             n_harmonics,
+            args.time_offset,
             logger,
         )
 
