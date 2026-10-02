@@ -30,12 +30,6 @@ def parse_args():
         help="Highest azimuthal order to compute (default: %(default)s)",
     )
     parser.add_argument(
-        "--l-max",
-        type=int,
-        default=6,
-        help="Largest radial branch to consider (default: %(default)s)",
-    )
-    parser.add_argument(
         "--mesh-size",
         type=float,
         default=5,
@@ -60,7 +54,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     for k in range(args.k_max + 1):
         harmonics, labels = compute_webster_horn_meridian_harmonics(
-            mesh, model, n=args.n_modes, angular_order=k, l_max=args.l_max
+            mesh, model, n=args.n_modes, angular_order=k
         )
 
         n_rows = max(l for _, l, _ in labels)
