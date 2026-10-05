@@ -1,9 +1,10 @@
+import copy
 import logging
 import math
 
 import numpy as np
 from scipy.integrate import cumulative_trapezoid
-from scipy.interpolate import CubicSpline
+from scipy.interpolate import CubicSpline, PPoly
 from scipy.spatial import KDTree
 from netgen import occ
 import netgen.libngpy._meshing as ng
@@ -137,6 +138,72 @@ def axial_profile(
     z_samples = central[:, 2]
 
     return s_samples, R_samples, t_samples, z_samples
+
+
+
+def expand_and_extend_tail(
+        embryo_model: EmbryoModel,
+        radial_expansion: float = 0.0,
+        radial_offset: float = 0.0,
+        linear_fraction: float = 0.8
+) -> EmbryoModel:
+    """Expand an embryo model radially and continue its tail (end of the spline
+    domain) along the end tangents, without changing the shape of the existing
+    body.
+
+    Every transverse spline is scaled about the central spline by
+    ``1 + radial_expansion``, pushed outwards by ``radial_offset`` (in model
+    units; the offset curve is re-interpolated at the original knots) and gets
+    one linear piece appended (the existing pieces stay unchanged) that
+    continues its end tangent until the radius has dropped by
+    ``linear_fraction`` of its end value. The central spline is continued
+    straight. The extended model still ends with a flat cap.
+
+    :param embryo_model: The embryo model to expand and extend
+    :param radial_expansion: Relative radial expansion of the transverse splines
+    :param radial_offset: Absolute radial offset of the transverse splines, e.g.
+        half a cell diameter when the model was fitted to nucleus positions
+    :param linear_fraction: Fraction of the end radius covered by the linear
+        continuation; 0 leaves the tail where it is
+    :return: A new embryo model with extended spline domain
+    """
+    central = embryo_model.central_spline
+    t_end = embryo_model.spline_domain[-1]
+    c_end, c_tangent = central(t_end), central.derivative()(t_end)
+    f = 1 + radial_expansion
+
+    def linear_piece(p, d):
+        """Coefficients of the cubic piece p + d * t."""
+        return np.stack([np.zeros_like(p), np.zeros_like(p), d, p])[:, None]
+
+    def scale_and_measure(spline):
+        scaled = PPoly(central.c + f * (spline.c - central.c), spline.x)
+        if radial_offset:
+            c_knots, p_knots = central(spline.x), scaled(spline.x)
+            r_knots = np.linalg.norm((p_knots - c_knots)[:, :2], axis=1, keepdims=True)
+            scaled = CubicSpline(spline.x, c_knots + (p_knots - c_knots) * (1 + radial_offset / r_knots))
+        p_end, d_end = scaled(t_end), scaled.derivative()(t_end)
+        offset = p_end - c_end
+        radius = np.hypot(*offset[:2])
+        d_radius = d_end[:2] @ offset[:2] / radius
+        if d_radius >= 0:
+            raise ValueError("Transverse spline does not taper at the end of the domain")
+        return scaled, p_end, d_end, linear_fraction * radius / -d_radius
+
+    # All splines must end at the same parameter value: continue every one as
+    # far as the one that needs the longest continuation
+    tails = [scale_and_measure(spline) for spline in embryo_model.transverse_splines]
+    dt = max(dt for *_, dt in tails)
+    extended = copy.copy(embryo_model)
+    extended.transverse_splines = [scaled for scaled, *_ in tails]
+    if dt == 0:
+        return extended
+    for scaled, p_end, d_end, _ in tails:
+        scaled.extend(linear_piece(p_end, d_end), [t_end + dt])
+    extended.central_spline = PPoly(central.c, central.x)
+    extended.central_spline.extend(linear_piece(c_end, c_tangent), [t_end + dt])
+    extended.spline_domain = np.append(embryo_model.spline_domain, t_end + dt)
+    return extended
 
 
 def _mesh_embryo_geometry(
