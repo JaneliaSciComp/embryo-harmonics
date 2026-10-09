@@ -37,6 +37,23 @@ def parse_args():
         default=5,
         help="Mesh size used to generate the meridian mesh (default: %(default)s)",
     )
+    parser.add_argument(
+        "--radial-extension",
+        type=float,
+        default=0.0,
+        metavar="UM",
+        help="Push the outline out by this many microns before meshing, e.g. "
+        "half a cell diameter since the model is fitted to nucleus positions "
+        "(default: %(default)s)",
+    )
+    parser.add_argument(
+        "--taper",
+        type=float,
+        default=0.0,
+        metavar="FRACTION",
+        help="Continue the tail along its end tangents until the radius has "
+        "dropped by this fraction, e.g. 0.8 (default: %(default)s, no continuation)",
+    )
     return parser.parse_args()
 
 
@@ -67,6 +84,12 @@ def main():
     for time_step in tqdm(embryo_model_loader.time_steps):
         logger.info("Processing time step %d", time_step)
         embryo_model = embryo_model_loader.load(time_step, symmetric=True)
+        if args.radial_extension or args.taper:
+            embryo_model = celegans.expand_and_extend_tail(
+                embryo_model,
+                radial_offset=args.radial_extension / celegans.gene_data.VOXEL_SIZE_UM,
+                linear_fraction=args.taper,
+            )
         mesh = embryo_model.generate_meridian_mesh(mesh_size=args.mesh_size)
         harmonics = AxisymmetricHarmonics.compute(mesh, n=args.n_harmonics)
 
