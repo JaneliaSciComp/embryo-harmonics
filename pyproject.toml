@@ -25,6 +25,7 @@ dependencies = [
   "mkl<2026 ; sys_platform == 'linux'",
   "threadpoolctl",
   "pyarrow>=25.0.1",
+  "zarr>=3.4.1",
 ]
 
 [dependency-groups]
