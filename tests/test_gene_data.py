@@ -3,12 +3,14 @@ import warnings
 import pytest
 
 import numpy as np
+import zarr
 
 from embryoharmonics import Harmonics
 from embryoharmonics.celegans import (
     GeneData,
     GeneDataLoader,
     ParquetGeneDataLoader,
+    ZarrGeneDataLoader,
     open_gene_data_loader,
 )
 
@@ -149,6 +151,47 @@ def test_parquet_gene_data_loader():
         gdl.load("unknown", 100)
     with pytest.raises(ValueError):
         gdl.load_tissue("muscle", 100)
+
+
+def test_zarr_gene_data_loader(tmp_path):
+    """Test that the zarr loader joins expression onto cell positions by time
+    point and lineage name, with both subgroups using their own index lists.
+    """
+    root = zarr.open_group(tmp_path / "genes.zarr", mode="w")
+    cpm = root.create_group("cpm")
+    cpm["TI"] = np.array([100, 104], dtype=np.int16)
+    cpm["LI"] = np.array(["ABp", "EMS", "ABa"])
+    cpm["GE"] = np.array(["cwn-1", "pal-1"])
+    # cpm[t, lineage, gene] = 100 * t_index + 10 * lineage_index + gene_index
+    cpm["cpm"] = (100 * np.arange(2)[:, None, None] + 10 * np.arange(3)[None, :, None]
+                  + np.arange(2)[None, None, :]).astype(np.float32)
+
+    xyz = root.create_group("xyz")
+    xyz["TI"] = np.array([96, 100, 104], dtype=np.int16)
+    xyz["CO"] = np.array(["AP", "DV", "LR"])
+    xyz["LI"] = np.array(["EMS", "P2", "ABa"])
+    positions = np.full((3, 3, 3), np.nan, dtype=np.float32)
+    positions[1, :, 0] = [1.0, 2.0, 3.0]  # EMS at t=100 as (AP, DV, LR)
+    positions[1, :, 1] = [4.0, 5.0, 6.0]  # P2 at t=100 has no expression
+    positions[2, :, 2] = [7.0, 8.0, 9.0]  # ABa at t=104 only
+    xyz["xyz"] = positions
+
+    gdl = open_gene_data_loader(str(tmp_path / "genes.zarr"), location_scale=2.0)
+    assert isinstance(gdl, ZarrGeneDataLoader)
+    assert gdl.gene_names == ["cwn-1", "pal-1"] and gdl.n_tissues == 0
+    # 96 has positions but no expression, so it's not a valid time step
+    assert gdl.time_steps == [100, 104]
+
+    locations, activities = gdl.load_all(100)
+    np.testing.assert_array_equal(locations, [[6.0, 4.0, 2.0], [12.0, 10.0, 8.0]])
+    np.testing.assert_array_equal(activities, [[10.0, np.nan], [11.0, np.nan]])
+
+    gene_data = gdl.load("pal-1", 104)
+    np.testing.assert_array_equal(gene_data.locations, [[18.0, 16.0, 14.0]])
+    np.testing.assert_array_equal(gene_data.activities, [121.0])
+
+    with pytest.raises(ValueError):
+        gdl.load("cwn-1", 96)
 
 
 def test_open_gene_data_loader_h5():

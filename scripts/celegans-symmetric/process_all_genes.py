@@ -17,7 +17,7 @@ def parse_args():
         "and tissues. The modes are evaluated at the cell positions directly "
         "from the stored meridian fields."
     )
-    parser.add_argument("gene_path", help="Path to the gene data: an HDF5 file or a directory of parquet files")
+    parser.add_argument("gene_path", help="Path to the gene data: an HDF5 file, a directory of parquet files or a zarr store")
     parser.add_argument(
         "result_path",
         help="Path to the HDF5 file containing meridian meshes and "
