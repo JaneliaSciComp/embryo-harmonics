@@ -10,6 +10,7 @@ import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 import scipy.sparse.linalg as spla
 import pyvista as pv
+import zarr
 
 from embryoharmonics.fem import FemMatrices
 from embryoharmonics.interpolation import HashableWrapper, interpolation_matrix
@@ -386,16 +387,93 @@ class ParquetGeneDataLoader:
 
 
     def load_tissue(self, tissue_name: str, time_step: int) -> GeneData:
-        raise ValueError(f"No tissue data in parquet gene data '{self.directory}'")
+        raise ValueError(f"No tissue data in gene data '{self.directory}'")
+
+
+class ZarrGeneDataLoader(ParquetGeneDataLoader):
+    """Loader for gene expression data from a zarr store with a ``cpm``
+    subgroup holding a ``cpm`` array (TI, LI, GE) and an ``xyz`` subgroup
+    holding the cell positions in an ``xyz`` array (TI, CO, LI). Both subgroups
+    have their own time point and lineage lists; expression values are joined
+    onto the positions by time point and lineage name. The format has no tissue data, so ``tissue_names`` is empty.
+    """
+    def __init__(self, path: str, location_scale: float | np.ndarray = LOCATION_SCALE):
+        """Initialize the gene data loader.
+
+        :param path: The zarr store containing the expression data and cell positions.
+        :param location_scale: Factor (scalar or per axis) from the stored positions (microns) to the geometry units.
+        """
+        self.location_scale = location_scale
+        self.directory = path
+        root = zarr.open_group(path, mode="r")
+        cpm, xyz = root["cpm"], root["xyz"]
+
+        self._gene_to_index = {name: i for i, name in enumerate(cpm["GE"][:].tolist())}
+
+        # Build a lookup from position lineage ID to expression lineage ID by name
+        cpm_lineage_to_index = {name: i for i, name in enumerate(cpm["LI"][:].tolist())}
+        self._xyz_to_cpm_lineage = np.array(
+            [cpm_lineage_to_index.get(name, -1) for name in xyz["LI"][:].tolist()])
+
+        # Time steps need both expression and position data
+        cpm_times, xyz_times = cpm["TI"][:].tolist(), xyz["TI"][:].tolist()
+        self._cpm_time_to_index = {t: i for i, t in enumerate(cpm_times)}
+        self._xyz_time_to_index = {t: i for i, t in enumerate(xyz_times)}
+        self._time_steps = sorted(set(cpm_times) & set(xyz_times))
+
+        # Positions are small; reorder the axes to (x, y, z) = (LR, DV, AP)
+        axes = [xyz["CO"][:].tolist().index(c) for c in ("LR", "DV", "AP")]
+        self._xyz = xyz["xyz"][:][:, axes, :]
+        self._cpm_array = cpm["cpm"]
+        self._cpm = None
+
+        # Expression matrix and locations of the most recently loaded time step
+        self._cached_time_step = None
+        self._cached_locations = None
+        self._cached_activities = None
+
+
+    def _load_time_step(self, time_step: int) -> None:
+        """Arrange the expression values and positions of a time step like the
+        HDF5 layout: a (gene, cell) matrix plus (cell, 3) locations.
+        """
+        if self._cached_time_step == time_step:
+            return
+
+        if time_step not in self._time_steps:
+            raise ValueError(f"Time step {time_step} not found in '{self.directory}'")
+
+        if self._cpm is None:
+            # ponytail: chunks span all time points, so reading one time point decompresses
+            # the whole array anyway; keep it in memory (~15 GB), rechunk along TI if that's too much
+            _logger.info("Reading all expression data from '%s'", self.directory)
+            self._cpm = self._cpm_array[:]
+
+        positions = self._xyz[self._xyz_time_to_index[time_step]].T
+        has_position = ~np.isnan(positions).any(axis=1)
+        locations = positions[has_position] * self.location_scale
+
+        # Lineages with a position may have no expression data
+        cpm_ids = self._xyz_to_cpm_lineage[has_position]
+        has_cpm = cpm_ids >= 0
+        activities = np.full((self.n_genes, len(cpm_ids)), np.nan, dtype=np.float32)
+        activities[:, has_cpm] = self._cpm[self._cpm_time_to_index[time_step]][cpm_ids[has_cpm]].T
+
+        self._cached_time_step = time_step
+        self._cached_locations = locations
+        self._cached_activities = activities
 
 
 def open_gene_data_loader(
     path: str, location_scale: float | np.ndarray = LOCATION_SCALE
 ) -> GeneDataLoader | ParquetGeneDataLoader:
-    """Open gene expression data in either format: a directory of parquet
-    files or a single HDF5 file.
+    """Open gene expression data in any format: a zarr store, a directory of
+    parquet files or a single HDF5 file.
     """
-    loader = ParquetGeneDataLoader if os.path.isdir(path) else GeneDataLoader
+    if os.path.normpath(path).endswith(".zarr"):
+        loader = ZarrGeneDataLoader
+    else:
+        loader = ParquetGeneDataLoader if os.path.isdir(path) else GeneDataLoader
     return loader(path, location_scale)
 
 
