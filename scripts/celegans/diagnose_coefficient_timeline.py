@@ -1,6 +1,6 @@
 """Diagnose all-zero time points in a harmonic coefficient file: compare the
-time lines and per-time-step coverage of the parquet gene data (expression
-table vs. cell positions) with the computed coefficients, and write the plots
+time lines and per-time-step coverage of the gene data (expression table
+vs. cell positions, parquet or zarr) with the computed coefficients, and write the plots
 plus a markdown report into one directory.
 
 Example:
@@ -16,6 +16,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pyarrow.parquet as pq
+import zarr
 
 from embryoharmonics import celegans
 from embryoharmonics.celegans import load_axisymmetric_harmonics
@@ -25,7 +26,7 @@ matplotlib.use("Agg")
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("gene_dir", help="Directory of parquet gene data")
+    parser.add_argument("gene_dir", help="Directory of parquet gene data or zarr store")
     parser.add_argument("coefficient_file", help="HDF5 file with harmonic coefficients")
     parser.add_argument("geometry_file", help="HDF5 file with the (axisymmetric) meshes and harmonics")
     parser.add_argument("--time-offset", type=int, default=380, help="As passed to process_all_genes (default: %(default)s)")
@@ -43,6 +44,10 @@ def aggregate_gene_data(gene_dir, cache):
     """
     if os.path.exists(cache):
         return dict(np.load(cache, allow_pickle=True))
+    if os.path.normpath(gene_dir).endswith(".zarr"):
+        result = aggregate_zarr_gene_data(gene_dir)
+        np.savez(cache, **result)
+        return result
 
     path = lambda n: os.path.join(gene_dir, n)
     genes = pq.read_table(path("genes.parquet")).to_pydict()
@@ -104,6 +109,53 @@ def aggregate_gene_data(gene_dir, cache):
     return result
 
 
+def aggregate_zarr_gene_data(path):
+    """Same aggregates as :func:`aggregate_gene_data` for a zarr store with
+    ``cpm`` and ``xyz`` subgroups; a (time, lineage) pair is present in the
+    expression table if any of its genes has a value.
+    """
+    root = zarr.open_group(path, mode="r")
+    cpm, xyz = root["cpm"], root["xyz"]
+    times = cpm["TI"][:]
+    cpm_names = np.array(cpm["LI"][:].tolist(), dtype=object)
+    gene_names = np.array(cpm["GE"][:].tolist(), dtype=object)
+
+    # Lineages with a position at each position time point
+    xyz_names = np.array(xyz["LI"][:].tolist(), dtype=object)
+    xyz_times_all = xyz["TI"][:]
+    positioned = ~np.isnan(xyz["xyz"][:]).any(axis=1)
+    xyz_ti, xyz_li = np.nonzero(positioned)
+    xyz_times, xyz_counts = xyz_times_all[positioned.any(1)], positioned.sum(1)[positioned.any(1)]
+    xyz_name_to_index = {name: i for i, name in enumerate(xyz_names)}
+    cpm_to_xyz = np.array([xyz_name_to_index.get(name, -1) for name in cpm_names])
+    xyz_time_to_index = {t: i for i, t in enumerate(xyz_times_all.tolist())}
+
+    shape = (len(times), len(gene_names))
+    sum_all, sum_pos, nnz_all, nnz_pos = (np.zeros(shape) for _ in range(4))
+    pair_time, pair_lineage, pair_has_pos = [], [], []
+    values = cpm["cpm"][:]  # chunks span all time points, so read everything at once
+    for i, t in enumerate(times.tolist()):
+        slab = values[i]
+        present = ~np.isnan(slab).all(1)
+        has_pos = np.zeros(len(cpm_names), dtype=bool)
+        if t in xyz_time_to_index:
+            has_pos = (cpm_to_xyz >= 0) & positioned[xyz_time_to_index[t]][np.clip(cpm_to_xyz, 0, None)]
+        sum_all[i], sum_pos[i] = np.nansum(slab, 0), np.nansum(slab[has_pos], 0)
+        nnz_all[i], nnz_pos[i] = (slab > 0).sum(0), (slab[has_pos] > 0).sum(0)
+        pair_time += [t] * present.sum()
+        pair_lineage += cpm_names[present].tolist()
+        pair_has_pos += has_pos[present].tolist()
+
+    return dict(
+        times=times, gene_names=gene_names, gene_ids=np.arange(len(gene_names)),
+        sum_all=sum_all, sum_pos=sum_pos, nnz_all=nnz_all, nnz_pos=nnz_pos,
+        pair_time=np.array(pair_time), pair_lineage=np.array(pair_lineage, dtype=object),
+        pair_has_pos=np.array(pair_has_pos),
+        xyz_times=xyz_times, xyz_counts=xyz_counts,
+        xyz_pair_time=xyz_times_all[xyz_ti], xyz_pair_lineage=xyz_names[xyz_li],
+    )
+
+
 def load_coefficients(file_name):
     with h5py.File(file_name, "r") as f:
         coeff = f["gene_coefficients"][:]
@@ -140,7 +192,7 @@ def main():
     gd_times = agg["times"]
     coeff_times, coeff = load_coefficients(args.coefficient_file)
     ids = agg["gene_ids"]
-    assert coeff.shape[1] == len(ids), "gene count mismatch between parquet and coefficient file"
+    assert coeff.shape[1] == len(ids), "gene count mismatch between gene data and coefficient file"
     coeff_nnz_genes = (np.abs(coeff).sum(2) > 0).sum(1)
     zero_times = coeff_times[coeff_nnz_genes == 0]
     sel = np.searchsorted(gd_times, coeff_times)  # rows of the aggregates for coefficient times
@@ -165,7 +217,7 @@ def main():
 
     # --- Figure 2: time lines
     fig, ax = plt.subplots(figsize=(12, 3.2))
-    rows = [("positions (xyz.parquet)", agg["xyz_times"]), ("expression (cpm.parquet)", gd_times),
+    rows = [("positions", agg["xyz_times"]), ("expression", gd_times),
             ("geometry models", model_times), ("coefficients", coeff_times), ("all-zero coefficients", zero_times)]
     ax.eventplot([r[1] for r in rows], lineoffsets=range(len(rows)), linelengths=0.8,
                  colors=["C0", "C1", "0.5", "k", "red"])
@@ -265,13 +317,14 @@ def main():
         f"- {len(zero_times)} coefficient time points are all zero: {', '.join(map(str, zero_times))}.",
         "- Expression is not sampled on a regular grid: each time point of the expression table carries only the lineages "
         "that were assigned that time, from 1 to several hundred (Fig. 3, 4). The coefficient pipeline joins expression to "
-        "cell positions by exact lineage name at the same time point and drops everything else (`ParquetGeneDataLoader`).",
+        "cell positions by exact lineage name at the same time point and drops everything else.",
         "- After twitching (TI > {0}) the position table contains a fixed set of {1} named cells; expression lineages outside this set "
         "(e.g. {2} of {3} lineages at TI {4}) exist in the position table only before twitching and are dropped entirely.".format(
             post_start, len(post_cells), n_lin[sel][ref] - n_lin_pos[sel][ref], n_lin[sel][ref], coeff_times[ref]),
-        "- At the all-zero time points the expression table contains only 1–3 lineages, and none of them belongs to the post-twitch "
+        "- At the all-zero time points the expression table contains only {0}–{1} lineages, and none of them belongs to the post-twitch "
         "position set (table below). All expression at that time is dropped, so every coefficient is zero. The same mechanism explains "
-        "the strongly fluctuating number of non-zero genes at the other time points (Fig. 1, 3).",
+        "the strongly fluctuating number of non-zero genes at the other time points (Fig. 1, 3).".format(
+            *(lambda c: (min(c, default=0), max(c, default=0)))([(agg["pair_time"] == t).sum() for t in zero_times])),
         "- Where coefficients are non-zero they track the CPM sum over positioned lineages (Fig. 6, 7): apart from the lineage join, "
         "only the handful of cells that lie outside the body are lost (bottom row in Fig. 7).",
         "- Geometry is not the cause: the number of cells inside the body is nearly constant over time (Fig. 5).", "",
