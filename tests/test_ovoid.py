@@ -4,7 +4,12 @@ import pytest
 from embryoharmonics.celegans import AxisymmetricHarmonics
 from embryoharmonics.celegans.gene_data import VOXEL_SIZE_UM
 from embryoharmonics.celegans.ovoid import OvoidModel, load_ovoid, save_ovoid
-from embryoharmonics.celegans.ovoid_horn import CAP_TREATMENTS, compute_horn_z_harmonics
+from embryoharmonics.celegans.ovoid_horn import (
+    CAP_TREATMENTS,
+    compute_horn_phi_harmonics,
+    compute_horn_z_harmonics,
+    sph_jp_zero,
+)
 
 
 COEFFICIENT_FILE = "tests/resources/ovoid_coefficients.csv"
@@ -153,3 +158,40 @@ def test_unknown_cap_treatment_raises(spheroid):
     ovoid, mesh, _ = spheroid
     with pytest.raises(ValueError):
         compute_horn_z_harmonics(mesh, ovoid, caps="pointy")
+
+
+def test_spherical_bessel_derivative_zeros():
+    """The zeros of j_k' should match the tabulated ball eigenvalues."""
+    assert sph_jp_zero(0, 1) == 0.0
+    assert sph_jp_zero(1, 1) == pytest.approx(BALL_ZEROS[0])
+    assert sph_jp_zero(2, 1) == pytest.approx(BALL_ZEROS[1])
+    assert sph_jp_zero(0, 2) == pytest.approx(4.4934094579)
+
+
+def test_horn_phi_is_exact_for_a_ball():
+    """On a ball, the phi-horn modes are the exact ones: eigenvalues
+    (kappa_{k,p} / R)^2 with multiplicity 2k + 1.
+    """
+    radius = 20.0
+    ball = OvoidModel([radius])
+    mesh = ball.generate_meridian_mesh(mesh_size=4)
+    horn, labels = compute_horn_phi_harmonics(mesh, ball, n=16)
+
+    expected = np.repeat(
+        np.array([0.0, BALL_ZEROS[0], BALL_ZEROS[1], 4.4934094579]) ** 2, [1, 3, 5, 1]
+    ) / radius**2
+    assert len(horn) == len(labels) >= 16
+    assert np.allclose(horn.eigenvalues[:10], expected, rtol=1e-3, atol=1e-10)
+
+
+def test_horn_phi_approximates_the_spheroid_spectrum(spheroid):
+    """The phi-horn should roughly approximate the exact spectrum of a
+    spheroid. It is much worse than the z-horn here: r(phi) is not slowly
+    varying at aspect ratio 1.9, and axial (m = 0) modes are off by up to 50%.
+    """
+    ovoid, mesh, exact = spheroid
+    horn, labels = compute_horn_phi_harmonics(mesh, ovoid, n=20)
+
+    assert len(horn) == len(labels) >= 20
+    errors = horn.eigenvalues[1:20] / exact.eigenvalues[1:20] - 1
+    assert np.mean(np.abs(errors)) < 0.2
