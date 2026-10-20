@@ -1,3 +1,4 @@
+import csv
 import os
 import subprocess
 import sys
@@ -23,6 +24,7 @@ def run_script(folder, name, *args, cwd):
     ("ovoid-horn-z", ["--caps", "natural"]),
     ("ovoid-horn-z", ["--caps", "flat"]),
     ("ovoid-horn-z", ["--caps", "corrected"]),
+    ("ovoid-horn-phi", []),
 ])
 def test_ovoid_pipeline_end_to_end(tmp_path, folder, extra_args):
     """Geometry and gene processing should yield finite coefficients for all
@@ -46,3 +48,22 @@ def test_ovoid_pipeline_end_to_end(tmp_path, folder, extra_args):
         assert coefficients.shape[2] >= 10
         assert np.all(np.isfinite(coefficients))
         assert file["max_relative_radius"][()] <= 1
+
+
+def test_compare_approximations(tmp_path):
+    """The comparison should score the exact harmonics perfectly and write a
+    figure and a metrics table.
+    """
+    for folder, name in (("ovoid-symmetric", "exact"), ("ovoid-horn-phi", "horn_phi")):
+        run_script(
+            folder, "process_geometry.py", COEFFICIENT_FILE,
+            "--output-file", tmp_path / f"{name}_harmonics.h5",
+            "--n-harmonics", 10, "--mesh-size", 20, cwd=tmp_path,
+        )
+    run_script("ovoid-horn-phi", "compare_approximations.py", tmp_path, cwd=tmp_path)
+
+    assert (tmp_path / "approximation_comparison.png").exists()
+    with open(tmp_path / "approximation_metrics.csv") as file:
+        rows = {row["variant"]: row for row in csv.DictReader(file)}
+    assert float(rows["exact"]["mean_best_match_all"]) == pytest.approx(1.0)
+    assert 0 < float(rows["horn_phi"]["mean_best_match_all"]) <= 1
