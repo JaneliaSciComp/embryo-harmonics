@@ -101,17 +101,39 @@ def compute_webster_horn_meridian_harmonics(
     :return: The approximate harmonics on the meridian mesh, and their
         ``(m, l, n)`` mode labels (azimuthal order, radial branch, axial index)
     """
-    from embryoharmonics.celegans.axisymmetric import AxisymmetricHarmonics
-
     s_samples, R_samples, _, z_samples = axial_profile(embryo_model, n_samples)
     if angular_order is None:
         candidates = _select_modes(s_samples, R_samples, n)
     else:
         candidates = _branch_modes(s_samples, R_samples, n, angular_order)
 
-    r_node = mesh.points[:, 0]
     s_node = np.interp(mesh.points[:, 2], z_samples, s_samples)
     R_node = np.interp(mesh.points[:, 2], z_samples, R_samples)
+    return meridian_harmonics(mesh, candidates, s_samples, s_node, R_node)
+
+
+def meridian_harmonics(
+        mesh: pv.UnstructuredGrid,
+        candidates: list[dict],
+        s_samples: np.ndarray,
+        s_node: np.ndarray,
+        R_node: np.ndarray,
+) -> tuple["AxisymmetricHarmonics", list[tuple[int, int, int]]]:
+    """Evaluate Webster-Horn modes A(s) * J_m(j'_{m,l} * r / R) on a meridian
+    mesh with points (r, 0, z).
+
+    :param mesh: The meridian triangle mesh
+    :param candidates: The modes, from :func:`_select_modes` or
+        :func:`_branch_modes`
+    :param s_samples: The axial grid the envelopes are given on
+    :param s_node: The axial coordinate of every mesh node (clamped to the
+        grid, so envelopes are continued constantly beyond its ends)
+    :param R_node: The local radius of the body at every mesh node
+    :return: The modes on the meridian mesh, and their ``(m, l, n)`` labels
+    """
+    from embryoharmonics.celegans.axisymmetric import AxisymmetricHarmonics
+
+    r_node = mesh.points[:, 0]
     theta_node = np.zeros_like(r_node)
 
     # The meridian field is shared by a cos/sin pair, so the angular factor is
@@ -137,7 +159,9 @@ def _branch_modes(
         s_samples: np.ndarray,
         R_samples: np.ndarray,
         n: int,
-        m: int
+        m: int,
+        *,
+        corrected: bool = False,
 ) -> list[dict]:
     """The n lowest Webster-Horn modes of a single azimuthal order m, drawn
     from as many radial branches l = 1, 2, ... as needed, without cos/sin
@@ -146,7 +170,9 @@ def _branch_modes(
     candidates = []
     l = 1
     while True:
-        eigenvalues, envelopes = webster_envelopes(s_samples, R_samples, m, l)
+        eigenvalues, envelopes = webster_envelopes(
+            s_samples, R_samples, m, l, corrected=corrected
+        )
         # the lowest eigenvalue of a branch grows with l, so no later branch
         # can contribute either
         if len(candidates) == n and eigenvalues[0] > candidates[-1]["eigenvalue"]:
@@ -261,7 +287,9 @@ def match_modes(
 def _select_modes(
         s_samples: np.ndarray,
         R_samples: np.ndarray,
-        n: int
+        n: int,
+        *,
+        corrected: bool = False,
 ) -> list[dict]:
     """Solve the Webster-Horn equation for as many (m, l) branches as needed
     and pick the lowest ``n`` modes overall, expanding m > 0 branches into
@@ -271,7 +299,7 @@ def _select_modes(
     cutoff = np.inf
     m = 0
     while True:
-        branch = _branch_modes(s_samples, R_samples, n, m)
+        branch = _branch_modes(s_samples, R_samples, n, m, corrected=corrected)
         # the lowest eigenvalue of a branch grows with m, so no later one can
         # contribute either
         if branch[0]["eigenvalue"] > cutoff:

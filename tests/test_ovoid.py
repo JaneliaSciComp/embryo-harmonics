@@ -4,6 +4,7 @@ import pytest
 from embryoharmonics.celegans import AxisymmetricHarmonics
 from embryoharmonics.celegans.gene_data import VOXEL_SIZE_UM
 from embryoharmonics.celegans.ovoid import OvoidModel, load_ovoid, save_ovoid
+from embryoharmonics.celegans.ovoid_horn import CAP_TREATMENTS, compute_horn_z_harmonics
 
 
 COEFFICIENT_FILE = "tests/resources/ovoid_coefficients.csv"
@@ -106,3 +107,49 @@ def test_save_and_load_round_trip(tmp_path):
     save_ovoid(file_name, ovoid)
 
     assert np.array_equal(load_ovoid(file_name).coefficients, ovoid.coefficients)
+
+
+@pytest.fixture(scope="module")
+def spheroid():
+    """An (almost exact) prolate spheroid and its meridian mesh and exact
+    harmonics.
+    """
+    ovoid = OvoidModel.from_csv(COEFFICIENT_FILE, column="ellipse_value")
+    mesh = ovoid.generate_meridian_mesh(mesh_size=6)
+    return ovoid, mesh, AxisymmetricHarmonics.compute(mesh, n=20)
+
+
+@pytest.mark.parametrize("caps", CAP_TREATMENTS)
+def test_horn_z_approximates_the_spheroid_spectrum(spheroid, caps):
+    """Every cap treatment should approximate the exact spectrum of a spheroid
+    (aspect ratio 1.9) to within a few percent.
+    """
+    ovoid, mesh, exact = spheroid
+    horn, labels = compute_horn_z_harmonics(mesh, ovoid, n=20, caps=caps)
+
+    assert len(horn) == len(labels) >= 20
+    assert horn.eigenvalues[0] == pytest.approx(0, abs=1e-10)
+    errors = horn.eigenvalues[1:20] / exact.eigenvalues[1:20] - 1
+    assert np.mean(np.abs(errors)) < 0.05
+
+
+def test_corrected_caps_leave_the_pure_area_branch_unchanged(spheroid):
+    """The wall-slope terms vanish for the m=0, l=1 branch."""
+    ovoid, mesh, _ = spheroid
+    natural, natural_labels = compute_horn_z_harmonics(mesh, ovoid, n=8, angular_order=0)
+    corrected, corrected_labels = compute_horn_z_harmonics(
+        mesh, ovoid, n=8, angular_order=0, caps="corrected"
+    )
+
+    def area_branch(harmonics, labels):
+        return harmonics.eigenvalues[[i for i, (_, l, _) in enumerate(labels) if l == 1]]
+
+    plain = area_branch(natural, natural_labels)
+    assert len(plain) >= 3
+    assert np.allclose(area_branch(corrected, corrected_labels)[:len(plain)], plain)
+
+
+def test_unknown_cap_treatment_raises(spheroid):
+    ovoid, mesh, _ = spheroid
+    with pytest.raises(ValueError):
+        compute_horn_z_harmonics(mesh, ovoid, caps="pointy")
