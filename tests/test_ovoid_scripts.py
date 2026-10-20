@@ -20,6 +20,9 @@ def run_script(folder, name, *args, cwd):
 
 @pytest.mark.parametrize("folder, extra_args", [
     ("ovoid-symmetric", []),
+    ("ovoid-horn-z", ["--caps", "natural"]),
+    ("ovoid-horn-z", ["--caps", "flat"]),
+    ("ovoid-horn-z", ["--caps", "corrected"]),
 ])
 def test_ovoid_pipeline_end_to_end(tmp_path, folder, extra_args):
     """Geometry and gene processing should yield finite coefficients for all
