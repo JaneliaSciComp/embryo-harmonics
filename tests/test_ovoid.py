@@ -8,6 +8,7 @@ from embryoharmonics.celegans.ovoid_horn import (
     CAP_TREATMENTS,
     compute_horn_phi_harmonics,
     compute_horn_z_harmonics,
+    compute_sphere_map_harmonics,
     sph_jp_zero,
 )
 
@@ -168,14 +169,15 @@ def test_spherical_bessel_derivative_zeros():
     assert sph_jp_zero(0, 2) == pytest.approx(4.4934094579)
 
 
-def test_horn_phi_is_exact_for_a_ball():
-    """On a ball, the phi-horn modes are the exact ones: eigenvalues
-    (kappa_{k,p} / R)^2 with multiplicity 2k + 1.
+@pytest.mark.parametrize("compute", [compute_horn_phi_harmonics, compute_sphere_map_harmonics])
+def test_polar_approximations_are_exact_for_a_ball(compute):
+    """On a ball, the phi-horn and sphere-map modes are the exact ones:
+    eigenvalues (kappa_{k,p} / R)^2 with multiplicity 2k + 1.
     """
     radius = 20.0
     ball = OvoidModel([radius])
     mesh = ball.generate_meridian_mesh(mesh_size=4)
-    horn, labels = compute_horn_phi_harmonics(mesh, ball, n=16)
+    horn, labels = compute(mesh, ball, n=16)
 
     expected = np.repeat(
         np.array([0.0, BALL_ZEROS[0], BALL_ZEROS[1], 4.4934094579]) ** 2, [1, 3, 5, 1]
@@ -195,3 +197,15 @@ def test_horn_phi_approximates_the_spheroid_spectrum(spheroid):
     assert len(horn) == len(labels) >= 20
     errors = horn.eigenvalues[1:20] / exact.eigenvalues[1:20] - 1
     assert np.mean(np.abs(errors)) < 0.2
+
+
+def test_sphere_map_approximates_the_spheroid_spectrum(spheroid):
+    """The mapped ball modes should roughly approximate the exact spectrum of
+    a spheroid, better than the phi-horn.
+    """
+    ovoid, mesh, exact = spheroid
+    mapped, labels = compute_sphere_map_harmonics(mesh, ovoid, n=20)
+
+    assert len(mapped) == len(labels) >= 20
+    errors = mapped.eigenvalues[1:20] / exact.eigenvalues[1:20] - 1
+    assert np.mean(np.abs(errors)) < 0.1

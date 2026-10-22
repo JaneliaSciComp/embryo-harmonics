@@ -101,6 +101,36 @@ def webster_envelopes(
     return sturm_liouville(s, w_bar, q + c2 * slope ** 2, w_bar, c)
 
 
+def assemble_sturm_liouville(
+        s: np.ndarray,
+        p: np.ndarray,
+        q: np.ndarray,
+        w: np.ndarray,
+        c: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Assemble the stiffness and mass matrices of the weak form solved by
+    :func:`sturm_liouville` (same arguments), without boundary conditions.
+
+    :return: The dense stiffness and mass matrices (n_s, n_s)
+    """
+    n_s = len(s)
+    h = np.diff(s)
+    K = np.zeros((n_s, n_s))
+    M = np.zeros((n_s, n_s))
+
+    e = np.arange(n_s - 1)
+    for a, b, sign in ((0, 0, 1), (1, 1, 1), (0, 1, -1), (1, 0, -1)):
+        mass_factor = 2 if a == b else 1
+        np.add.at(K, (e + a, e + b), sign * p / h + q * h * mass_factor / 6)
+        np.add.at(M, (e + a, e + b), w * h * mass_factor / 6)
+    if c is not None:
+        # int c (A phi' + A' phi) over an element only touches the diagonal
+        np.add.at(K, (e, e), -c)
+        np.add.at(K, (e + 1, e + 1), c)
+
+    return K, M
+
+
 def sturm_liouville(
         s: np.ndarray,
         p: np.ndarray,
@@ -132,25 +162,11 @@ def sturm_liouville(
     :return: Eigenvalues (ascending) and the matching eigenfunctions at the
         nodes, as columns of the second return value
     """
-    n_s = len(s)
-    h = np.diff(s)
-    K = np.zeros((n_s, n_s))
-    M = np.zeros((n_s, n_s))
-
-    e = np.arange(n_s - 1)
-    for a, b, sign in ((0, 0, 1), (1, 1, 1), (0, 1, -1), (1, 0, -1)):
-        mass_factor = 2 if a == b else 1
-        np.add.at(K, (e + a, e + b), sign * p / h + q * h * mass_factor / 6)
-        np.add.at(M, (e + a, e + b), w * h * mass_factor / 6)
-    if c is not None:
-        # int c (A phi' + A' phi) over an element only touches the diagonal
-        np.add.at(K, (e, e), -c)
-        np.add.at(K, (e + 1, e + 1), c)
-
+    K, M = assemble_sturm_liouville(s, p, q, w, c)
     free = slice(1, -1) if fixed_ends else slice(None)
     eigenvalues, free_envelopes = sla.eigh(
         K[free, free], M[free, free], subset_by_index=subset
     )
-    envelopes = np.zeros((n_s, free_envelopes.shape[1]))
+    envelopes = np.zeros((len(s), free_envelopes.shape[1]))
     envelopes[free] = free_envelopes
     return eigenvalues, envelopes
