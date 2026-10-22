@@ -25,6 +25,7 @@ def run_script(folder, name, *args, cwd):
     ("ovoid-horn-z", ["--caps", "flat"]),
     ("ovoid-horn-z", ["--caps", "corrected"]),
     ("ovoid-horn-phi", []),
+    ("ovoid-sphere-map", []),
 ])
 def test_ovoid_pipeline_end_to_end(tmp_path, folder, extra_args):
     """Geometry and gene processing should yield finite coefficients for all
