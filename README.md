@@ -41,11 +41,11 @@ Before twitching, the embryo is an ovoid whose outline is a Fourier series of th
 There is one geometry for all pre-twitch time points:
 ```bash
 uv run python scripts/ovoid-symmetric/process_geometry.py data/ovoid/ovoid_coefficient_comparison.csv \
-    --output-file results/exact_harmonics.h5 --flip
+    --output-file results/exact_harmonics.h5
 uv run python scripts/ovoid-horn-z/process_geometry.py data/ovoid/ovoid_coefficient_comparison.csv \
-    --output-file results/horn_z_natural_harmonics.h5 --flip --caps natural  # or flat, corrected
+    --output-file results/horn_z_natural_harmonics.h5 --caps natural  # or flat, corrected
 ```
-`--pixel-size` sets the size of the outline's pixels (default 0.1625 / 4 microns), `--radial-extension` pushes the outline out and `--flip` points its first tip to the negative AP direction.
+The outline is in pixels of 0.0391 microns. By default, it is scaled up by 1% (`--radial-extension`) so that all cells fit, and its first tip points to the negative AP direction (`--no-flip` reverts that).
 The gene script (a copy in every folder) fits one translation that moves the cells of all time points up to `--last-time-step` into the ovoid and stores it with the coefficients:
 ```bash
 uv run python scripts/ovoid-symmetric/process_all_genes.py data/embryo-20261009.zarr results/exact_harmonics.h5 \

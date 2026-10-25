@@ -164,13 +164,12 @@ The energy of the gene coefficients accumulates almost identically in all bases 
 metric does not discriminate between them.</p>
 
 <h2>Geometry and cell placement</h2>
-<p>The outline coefficients are given in pixels of 4× upsampled 0.1625 µm images, i.e. 0.040625 µm
-(<code>--pixel-size</code>). The cells of all 85 pre-twitch time points (20 to 378) are moved into the ovoid by a
+<p>The outline coefficients are given in pixels of 0.0391 µm (1719 × 1146 pixel images of 67.25 × 44.83 µm); the results in this writeup were computed with an earlier estimate of 0.040625 µm. The cells of all 85 pre-twitch time points (20 to 378) are moved into the ovoid by a
 single translation that minimizes the largest relative radius $|x - c| / r(\varphi)$ over all cells; the major
 axis is kept along AP. With <code>--flip</code> (first tip of the outline towards negative AP), the outermost cell
-lies at 96.6% of the outline radius (98.2% without the flip), so <strong>no radial extension is needed</strong>;
-<code>--radial-extension</code> is there in case a different pixel size or the cell extent (positions are nuclei)
-calls for it. The fitted center is stored with the coefficients. All results are in
+lies at 96.6% of the outline radius (98.2% without the flip) with the earlier estimate. With the true pixel size,
+5 of the 25852 cells lie slightly outside (up to 100.35%; 29 cells up to 101.8% without the flip), so the outline is
+scaled up by 1% by default (<code>--radial-extension</code>), which brings the outermost cell to 99.35%. The fitted center is stored with the coefficients. All results are in
 <code>/data/embryo-harmonics/ovoid_20261020-192514</code>.</p>
 </main>
 </body>

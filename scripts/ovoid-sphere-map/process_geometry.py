@@ -4,7 +4,6 @@ import os
 import time
 
 from embryoharmonics.celegans import OvoidModel, save_axisymmetric_harmonics, save_ovoid
-from embryoharmonics.celegans.ovoid import DEFAULT_PIXEL_SIZE_UM
 from embryoharmonics.celegans.ovoid_horn import compute_sphere_map_harmonics
 
 
@@ -35,25 +34,19 @@ def parse_args():
         help="Mesh size used to generate the meridian mesh (default: %(default)s)",
     )
     parser.add_argument(
-        "--pixel-size",
-        type=float,
-        default=DEFAULT_PIXEL_SIZE_UM,
-        metavar="UM",
-        help="Pixel size of the outline coefficients in microns (default: %(default)s)",
-    )
-    parser.add_argument(
         "--radial-extension",
         type=float,
-        default=0.0,
-        metavar="UM",
-        help="Push the outline out by this many microns before meshing, e.g. "
-        "if the cells don't fit (default: %(default)s)",
+        default=0.01,
+        metavar="FRACTION",
+        help="Scale the outline by 1 + this fraction before meshing, so that "
+        "all cells fit (default: %(default)s)",
     )
     parser.add_argument(
         "--flip",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="Point the first tip of the outline (theta = 0) to the negative "
-        "instead of the positive AP direction",
+        "instead of the positive AP direction (default: %(default)s)",
     )
     return parser.parse_args()
 
@@ -74,7 +67,6 @@ def main():
 
     ovoid = OvoidModel.from_csv(
         args.path,
-        pixel_size=args.pixel_size,
         radial_extension=args.radial_extension,
         flip=args.flip,
     )

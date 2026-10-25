@@ -21,8 +21,8 @@ from embryoharmonics.celegans.embryo_model import _to_vtk_2d
 from embryoharmonics.celegans.gene_data import VOXEL_SIZE_UM
 
 
-# The outlines were traced on 4x upsampled 0.1625 micron images
-DEFAULT_PIXEL_SIZE_UM = VOXEL_SIZE_UM / 4
+# The outlines were traced on 1719 x 1146 pixel images of 67.25 x 44.83 microns
+DEFAULT_PIXEL_SIZE_UM = 0.0391
 
 _logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class OvoidModel:
 
         :param path: The path to the csv file
         :param pixel_size: The pixel size of the coefficients in microns
-        :param radial_extension: Push the outline out by this many microns
+        :param radial_extension: Scale the outline by 1 + this fraction
         :param flip: Whether to point theta = 0 to the negative z-axis instead
         :param column: The column containing the coefficient values
         :return: The ovoid model in voxels
@@ -67,7 +67,7 @@ class OvoidModel:
         coefficients = np.array([values[f"a{n}"] for n in range(n_max + 1)])
 
         coefficients *= pixel_size / VOXEL_SIZE_UM
-        coefficients[0] += radial_extension / VOXEL_SIZE_UM
+        coefficients *= 1 + radial_extension
         if flip:
             # r(pi - theta): odd terms change sign
             coefficients *= (-1.0) ** np.arange(n_max + 1)
