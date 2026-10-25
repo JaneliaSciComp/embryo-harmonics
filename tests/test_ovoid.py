@@ -40,13 +40,13 @@ def test_ellipse_coefficients_reproduce_the_ellipse():
 
 def test_flip_and_radial_extension():
     """Flipping mirrors the outline at theta = pi / 2, and the radial extension
-    scales it.
+    adds a constant radius (in microns).
     """
     ovoid = OvoidModel.from_csv(COEFFICIENT_FILE)
-    flipped = OvoidModel.from_csv(COEFFICIENT_FILE, flip=True, radial_extension=0.01)
+    flipped = OvoidModel.from_csv(COEFFICIENT_FILE, flip=True, radial_extension=1.0)
     theta = np.linspace(0, np.pi, 50)
 
-    assert np.allclose(flipped.radius(np.pi - theta), 1.01 * ovoid.radius(theta))
+    assert np.allclose(flipped.radius(np.pi - theta), ovoid.radius(theta) + 1 / VOXEL_SIZE_UM)
 
 
 def test_radius_derivative():

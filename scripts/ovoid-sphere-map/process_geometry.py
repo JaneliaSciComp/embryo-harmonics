@@ -36,10 +36,10 @@ def parse_args():
     parser.add_argument(
         "--radial-extension",
         type=float,
-        default=0.01,
-        metavar="FRACTION",
-        help="Scale the outline by 1 + this fraction before meshing, so that "
-        "all cells fit (default: %(default)s)",
+        default=0.5,
+        metavar="UM",
+        help="Push the outline out by this many microns before meshing, so "
+        "that all cells fit (default: %(default)s)",
     )
     parser.add_argument(
         "--flip",

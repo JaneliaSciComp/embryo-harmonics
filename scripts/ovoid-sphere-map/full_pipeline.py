@@ -26,7 +26,7 @@ GENE_PATH = os.path.join(ROOT, 'embryo_pre_twitch.zarr')
 pv.set_jupyter_backend('client')
 
 # %%
-ovoid = OvoidModel.from_csv(COEFFICIENT_PATH, flip=True, radial_extension=0.01)
+ovoid = OvoidModel.from_csv(COEFFICIENT_PATH, flip=True, radial_extension=0.5)
 meridian_mesh = ovoid.generate_meridian_mesh(mesh_size=5)
 print(f"Number of elements: {meridian_mesh.n_cells}")
 

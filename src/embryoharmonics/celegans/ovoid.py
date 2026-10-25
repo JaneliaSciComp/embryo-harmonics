@@ -56,7 +56,7 @@ class OvoidModel:
 
         :param path: The path to the csv file
         :param pixel_size: The pixel size of the coefficients in microns
-        :param radial_extension: Scale the outline by 1 + this fraction
+        :param radial_extension: Push the outline out by this many microns
         :param flip: Whether to point theta = 0 to the negative z-axis instead
         :param column: The column containing the coefficient values
         :return: The ovoid model in voxels
@@ -67,7 +67,7 @@ class OvoidModel:
         coefficients = np.array([values[f"a{n}"] for n in range(n_max + 1)])
 
         coefficients *= pixel_size / VOXEL_SIZE_UM
-        coefficients *= 1 + radial_extension
+        coefficients[0] += radial_extension / VOXEL_SIZE_UM
         if flip:
             # r(pi - theta): odd terms change sign
             coefficients *= (-1.0) ** np.arange(n_max + 1)
