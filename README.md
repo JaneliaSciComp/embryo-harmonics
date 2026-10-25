@@ -53,3 +53,4 @@ uv run python scripts/ovoid-symmetric/process_all_genes.py data/embryo-20261009.
 ```
 `scripts/ovoid-horn-phi/compare_approximations.py results` compares all `<variant>_harmonics.h5` in a directory with `exact_harmonics.h5`.
 Afterwards, `scripts/ovoid-horn-phi/make_report.py results` writes a short HTML report with the metrics and the best-matching modes of the z-horn, the φ-horn and the sphere map.
+`scripts/ovoid-sphere-map/subspace_capture.py results` measures how much of the span of the first N sphere-map modes, and of the sphere-map projection of the gene data, the exact and z-horn modes capture (principal angles in the 3D L2 product).
