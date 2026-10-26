@@ -11,17 +11,18 @@ from embryoharmonics.celegans import load_axisymmetric_harmonics
 from embryoharmonics.fem import compute_mass_and_stiffness_axisymmetric
 
 
-REFERENCE = "sphere_map"
-CANDIDATES = ("exact", "horn_z_natural", "horn_z_flat", "horn_z_corrected")
+REFERENCE = "exact"
+# The variants and their labels; the exact modes against themselves are the baseline
+CANDIDATES = {"exact": "exact", "horn_z_natural": "horn-z", "sphere_map": "sphere map"}
 SIZES = (10, 30, 100, 300)
-CURVE_SIZES = (10, 30, 100)
-STYLES = ("-", "--", ":")
+CURVE_SIZES = (10, 30, 100, 300)
+STYLES = ("-", "--", ":", "-.")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Assess how well the exact (symmetric) and z-horn harmonics "
-        f"capture the subspace spanned by the first N sphere-map harmonics. "
+        description="Assess how well the z-horn and sphere-map harmonics "
+        f"capture the subspace spanned by the first N exact (symmetric) harmonics. "
         f"Expects {REFERENCE}_harmonics.h5, {REFERENCE}_coefficients.h5 and "
         "<variant>_harmonics.h5 files in one directory, all on the same "
         "meridian mesh. Writes subspace_capture.png and subspace_capture.csv."
@@ -118,9 +119,13 @@ def main():
     coefficients = coefficients.reshape(-1, coefficients.shape[-1])
     coefficients = coefficients[np.any(coefficients != 0, axis=1)]
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+    fig, axes = plt.subplot_mosaic(
+        [["mean"] * 2 + ["curves"] * 2 + ["gene"] * 2,
+         ["missed sphere_map"] * 3 + ["missed horn_z_natural"] * 3],
+        figsize=(18, 10),
+    )
     rows = []
-    for name in CANDIDATES:
+    for name, label in CANDIDATES.items():
         if not os.path.exists(os.path.join(args.directory, f"{name}_harmonics.h5")):
             continue
         candidate = load(name)
@@ -133,7 +138,7 @@ def main():
         cosines = [blocks.principal_cosines(n, n) for n in sizes]
         gene = [blocks.gene_capture(coefficients, n, n) for n in sizes]
 
-        row = {"variant": name}
+        row = {"variant": label}
         for size in SIZES:
             if size > n_max:
                 continue
@@ -148,46 +153,47 @@ def main():
         print(", ".join(f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}"
                         for k, v in row.items()))
 
-        line, = axes[0, 0].plot(sizes, [c.mean() for c in cosines], marker=".", label=name)
+        line, = axes["mean"].plot(sizes, [c.mean() for c in cosines], marker=".", label=label)
         color = line.get_color()
         candidate_sizes = np.unique(np.geomspace(1, len(candidate), 40).astype(int))
         for size, style in zip(CURVE_SIZES, STYLES):
             capture = [blocks.principal_cosines(size, m).mean() for m in candidate_sizes]
-            axes[0, 1].plot(candidate_sizes, capture, ls=style, color=color,
-                            label=name if size == CURVE_SIZES[0] else None)
-        axes[1, 0].plot(sizes, [c.sum() / t.sum() for t, c in gene], marker=".",
-                        color=color, label=name)
-        axes[1, 0].plot(sizes, [np.median(c[t > 0] / t[t > 0]) for t, c in gene],
-                        ls=":", color=color)
+            axes["curves"].plot(candidate_sizes, capture, ls=style, color=color,
+                                label=label if size == CURVE_SIZES[0] else None)
+        axes["gene"].plot(sizes, [c.sum() / t.sum() for t, c in gene], marker=".",
+                          color=color, label=label)
+        axes["gene"].plot(sizes, [np.median(c[t > 0] / t[t > 0]) for t, c in gene],
+                          ls=":", color=color)
 
         # The part of every reference mode outside the span of all candidate
         # modes, to see which modes are missed
-        if name == "exact":
+        ax = axes.get(f"missed {name}")
+        if ax is not None:
             missed = np.zeros(n_max)
             for indices, gs, gc, b in blocks.restricted(n_max, n_max):
                 projection = np.einsum("ij,ij->j", b, np.linalg.solve(gc, b))
                 missed[indices] = 1 - projection / np.diag(gs)
-            scatter = axes[1, 1].scatter(np.arange(n_max), missed, s=6,
-                                         c=reference.angular_orders[:n_max], cmap="viridis")
-            fig.colorbar(scatter, ax=axes[1, 1], label="angular order m")
-
-    axes[0, 0].set(title="Captured subspace of the first N sphere-map modes\nby the first N modes",
-                   xlabel="N", ylabel="mean squared cosine of the principal angles", xscale="log",
-                   ylim=(0, 1.02))
-    for size, style in zip(CURVE_SIZES, STYLES):
-        axes[0, 1].plot([], [], ls=style, color="k", label=f"N = {size}")
-    axes[0, 1].set(title="Captured subspace of the first N sphere-map modes\nby the first M modes",
-                   xlabel="M", ylabel="mean squared cosine of the principal angles",
-                   xscale="log", ylim=(0, 1.02))
-    axes[1, 0].plot([], [], ls=":", color="k", label="median over genes and time steps")
-    axes[1, 0].set(title="Captured sphere-map projection of the gene data\nby the first N modes",
-                   xlabel="N", ylabel="fraction of the squared norm", xscale="log",
-                   ylim=(0, 1.02))
-    axes[1, 1].set(title=f"Part of every sphere-map mode outside the first {n_max} exact modes",
-                   xlabel="# sphere-map harmonic", ylabel="1 - squared projection",
+            scatter = ax.scatter(np.arange(n_max), missed, s=6,
+                                 c=reference.angular_orders[:n_max], cmap="viridis")
+            fig.colorbar(scatter, ax=ax, label="angular order m")
+            ax.set(title=f"Part of every exact mode outside the first {n_max} {label} modes",
+                   xlabel="# exact harmonic", ylabel="1 - squared projection",
                    yscale="log", ylim=(1e-6, 2))
-    for ax in axes.flat[:3]:
-        ax.legend(fontsize=8)
+
+    axes["mean"].set(title="Captured subspace of the first N exact modes\nby the first N modes",
+                     xlabel="N", ylabel="mean squared cosine of the principal angles",
+                     xscale="log", ylim=(0.8, 1))
+    for size, style in zip(CURVE_SIZES, STYLES):
+        axes["curves"].plot([], [], ls=style, color="k", label=f"N = {size}")
+    axes["curves"].set(title="Captured subspace of the first N exact modes\nby the first M modes",
+                       xlabel="M", ylabel="mean squared cosine of the principal angles",
+                       xscale="log", ylim=(0, 1.02))
+    axes["gene"].plot([], [], ls=":", color="k", label="median over genes and time steps")
+    axes["gene"].set(title="Captured exact projection of the gene data\nby the first N modes",
+                     xlabel="N", ylabel="fraction of the squared norm", xscale="log",
+                     ylim=(0.8, 1))
+    for key in ("mean", "curves", "gene"):
+        axes[key].legend(fontsize=8)
     fig.tight_layout()
     figure_file = os.path.join(output_dir, "subspace_capture.png")
     fig.savefig(figure_file, dpi=200)
