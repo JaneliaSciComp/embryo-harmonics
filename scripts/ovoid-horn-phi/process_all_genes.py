@@ -48,6 +48,11 @@ def parse_args():
         "into a slightly too small geometry: one value for all directions or "
         "two values for the radial (x, y) and axial (z) direction (default: %(default)s)",
     )
+    parser.add_argument(
+        "--log1p",
+        action="store_true",
+        help="Decompose log(1 + cpm) instead of cpm (tissues are unaffected)",
+    )
     return parser.parse_args()
 
 
@@ -122,7 +127,9 @@ def main():
     logger.addHandler(handler)
 
     gene_data_loader = celegans.open_gene_data_loader(
-        args.gene_path, location_scale=celegans.gene_data.buffered_location_scale(args.buffer)
+        args.gene_path,
+        location_scale=celegans.gene_data.buffered_location_scale(args.buffer),
+        log1p=args.log1p,
     )
     time_steps = [t for t in gene_data_loader.time_steps if t <= args.last_time_step]
     if len(time_steps) == 0:
@@ -151,6 +158,7 @@ def main():
     if not os.path.dirname(target_file_name):
         target_file_name = os.path.join(os.path.dirname(args.result_path), target_file_name)
     with h5py.File(target_file_name, "w") as target_file:
+        target_file.attrs["log1p"] = args.log1p
         logger.info("Write data to %s", target_file_name)
         write_meta_data(target_file, gene_data_loader, time_steps, harmonics, center, fill)
         write_data(target_file, gene_data_loader, harmonics, time_steps, center, logger)

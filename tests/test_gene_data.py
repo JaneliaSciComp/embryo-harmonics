@@ -153,6 +153,19 @@ def test_parquet_gene_data_loader():
         gdl.load_tissue("muscle", 100)
 
 
+def test_log1p_gene_data_loaders(gene_data_loader):
+    """Test that log1p transforms genes but not tissues, keeping NaNs."""
+    raw = gene_data_loader.load_all(420)[1]
+    log = GeneDataLoader(gene_data_loader.h5file.filename, log1p=True).load_all(420)[1]
+    n = gene_data_loader.n_genes
+    np.testing.assert_allclose(log[:n], np.log1p(raw[:n]))
+    np.testing.assert_array_equal(log[n:], raw[n:])
+
+    path = "tests/resources/celegans_genedata_parquet"
+    gene_data = open_gene_data_loader(path, log1p=True).load("cwn-1", 100, remove_nans=False)
+    np.testing.assert_allclose(gene_data.activities, np.log1p([np.nan, 30.0, 10.0, np.nan]))
+
+
 def test_zarr_gene_data_loader(tmp_path):
     """Test that the zarr loader joins expression onto cell positions by time
     point and lineage name, with both subgroups using their own index lists.

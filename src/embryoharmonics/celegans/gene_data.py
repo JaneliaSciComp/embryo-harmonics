@@ -76,13 +76,23 @@ class GeneData:
 class GeneDataLoader:
     """Loader for gene expression data from an HDF5 file.
     """
-    def __init__(self, path: str, location_scale: float | np.ndarray = LOCATION_SCALE):
+
+    def __init__(
+        self,
+        path: str,
+        location_scale: float | np.ndarray = LOCATION_SCALE,
+        log1p: bool = False,
+    ):
         """Initialize the gene data loader.
 
         :param path: The path to the HDF5 file containing the gene expression data.
-        :param location_scale: Factor (scalar or per axis) from the stored positions (microns) to the geometry units.
+        :param location_scale: Factor (scalar or per axis) from the stored
+            positions (microns) to the geometry units.
+        :param log1p: Whether to return log(1 + cpm) instead of cpm for genes
+            (tissues are unaffected).
         """
         self.location_scale = location_scale
+        self.log1p = log1p
         self.h5file = h5py.File(path, "r")
 
         # Load all gene names
@@ -190,6 +200,8 @@ class GeneDataLoader:
 
         locations = self._locations[t, :, :] * self.location_scale
         activities = self._gene_activities[t, g, :]
+        if self.log1p:
+            activities = np.log1p(activities)
 
         if remove_nans:
             _logger.debug("Filtering NaN values from gene data %s at time step %d",
@@ -211,7 +223,10 @@ class GeneDataLoader:
 
         _logger.info("Loading all genes and tissues at time step %d from '%s'",
                      time_step, self.h5file.filename)
-        activities = np.concatenate((self._gene_activities[t], self._tissues[:]))
+        genes = self._gene_activities[t]
+        if self.log1p:
+            genes = np.log1p(genes)
+        activities = np.concatenate((genes, self._tissues[:]))
         return self._locations[t] * self.location_scale, activities
 
 
@@ -250,13 +265,17 @@ class ParquetGeneDataLoader:
     point) are joined onto the cell positions by lineage name. The format has
     no tissue data, so ``tissue_names`` is empty.
     """
-    def __init__(self, directory: str, location_scale: float | np.ndarray = LOCATION_SCALE):
+    def __init__(self, directory: str, location_scale: float | np.ndarray = LOCATION_SCALE,
+                 log1p: bool = False):
         """Initialize the gene data loader.
 
         :param directory: The directory containing the parquet files.
-        :param location_scale: Factor (scalar or per axis) from the stored positions (microns) to the geometry units.
+        :param location_scale: Factor (scalar or per axis) from the stored
+            positions (microns) to the geometry units.
+        :param log1p: Whether to return log(1 + cpm) instead of cpm.
         """
         self.location_scale = location_scale
+        self.log1p = log1p
         self.directory = directory
         path = functools.partial(os.path.join, directory)
 
@@ -350,7 +369,7 @@ class ParquetGeneDataLoader:
 
         self._cached_time_step = time_step
         self._cached_locations = locations
-        self._cached_activities = activities
+        self._cached_activities = np.log1p(activities) if self.log1p else activities
 
 
     def load(
@@ -395,15 +414,20 @@ class ZarrGeneDataLoader(ParquetGeneDataLoader):
     subgroup holding a ``cpm`` array (TI, LI, GE) and an ``xyz`` subgroup
     holding the cell positions in an ``xyz`` array (TI, CO, LI). Both subgroups
     have their own time point and lineage lists; expression values are joined
-    onto the positions by time point and lineage name. The format has no tissue data, so ``tissue_names`` is empty.
+    onto the positions by time point and lineage name. The format has no tissue
+    data, so ``tissue_names`` is empty.
     """
-    def __init__(self, path: str, location_scale: float | np.ndarray = LOCATION_SCALE):
+    def __init__(self, path: str, location_scale: float | np.ndarray = LOCATION_SCALE,
+                 log1p: bool = False):
         """Initialize the gene data loader.
 
         :param path: The zarr store containing the expression data and cell positions.
-        :param location_scale: Factor (scalar or per axis) from the stored positions (microns) to the geometry units.
+        :param location_scale: Factor (scalar or per axis) from the stored
+            positions (microns) to the geometry units.
+        :param log1p: Whether to return log(1 + cpm) instead of cpm.
         """
         self.location_scale = location_scale
+        self.log1p = log1p
         self.directory = path
         root = zarr.open_group(path, mode="r")
         cpm, xyz = root["cpm"], root["xyz"]
@@ -461,20 +485,21 @@ class ZarrGeneDataLoader(ParquetGeneDataLoader):
 
         self._cached_time_step = time_step
         self._cached_locations = locations
-        self._cached_activities = activities
+        self._cached_activities = np.log1p(activities) if self.log1p else activities
 
 
 def open_gene_data_loader(
-    path: str, location_scale: float | np.ndarray = LOCATION_SCALE
+    path: str, location_scale: float | np.ndarray = LOCATION_SCALE, log1p: bool = False
 ) -> GeneDataLoader | ParquetGeneDataLoader:
     """Open gene expression data in any format: a zarr store, a directory of
-    parquet files or a single HDF5 file.
+    parquet files or a single HDF5 file. With ``log1p``, the loader returns
+    log(1 + cpm) instead of cpm.
     """
     if os.path.normpath(path).endswith(".zarr"):
         loader = ZarrGeneDataLoader
     else:
         loader = ParquetGeneDataLoader if os.path.isdir(path) else GeneDataLoader
-    return loader(path, location_scale)
+    return loader(path, location_scale, log1p)
 
 
 def _convert_raw_names(raw_names):
