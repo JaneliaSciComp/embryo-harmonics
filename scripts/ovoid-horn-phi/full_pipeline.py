@@ -4,9 +4,8 @@
 # Every mode is approximated as A(phi) * j_k(kappa_{k,p} * rho / r(phi)) *
 # cos/sin(m * theta): the radial shape is the radial mode of a ball of the
 # local radius r(phi), and the envelope A(phi) solves a cheap 1D problem. The
-# approximation is exact for a ball (see horn_z_vs_phi.html for the
-# derivation). This pipeline compares it with the exact harmonics and
-# decomposes gene expression data against it.
+# approximation is exact for a ball. This pipeline compares it with the exact
+# harmonics and decomposes gene expression data against it.
 
 # %%
 import os

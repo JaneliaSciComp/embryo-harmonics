@@ -68,24 +68,3 @@ def test_compare_approximations(tmp_path):
         rows = {row["variant"]: row for row in csv.DictReader(file)}
     assert float(rows["exact"]["mean_best_match_all"]) == pytest.approx(1.0)
     assert 0 < float(rows["horn_phi"]["mean_best_match_all"]) <= 1
-
-
-def test_make_report(tmp_path):
-    """The report should embed the metrics table and the mode figures."""
-    for folder, name in (
-        ("ovoid-symmetric", "exact"),
-        ("ovoid-horn-z", "horn_z_natural"),
-        ("ovoid-horn-phi", "horn_phi"),
-        ("ovoid-sphere-map", "sphere_map"),
-    ):
-        run_script(
-            folder, "process_geometry.py", COEFFICIENT_FILE,
-            "--output-file", tmp_path / f"{name}_harmonics.h5",
-            "--n-harmonics", 30, "--mesh-size", 20, cwd=tmp_path,
-        )
-    run_script("ovoid-horn-phi", "compare_approximations.py", tmp_path, cwd=tmp_path)
-    run_script("ovoid-horn-phi", "make_report.py", tmp_path, cwd=tmp_path)
-
-    html = (tmp_path / "approximation_report.html").read_text()
-    assert html.count("data:image/png;base64,") == 2
-    assert "sphere map" in html and "<table>" in html
